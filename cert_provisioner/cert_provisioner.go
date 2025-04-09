@@ -7,9 +7,9 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base32"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,6 +24,15 @@ import (
 	"github.com/go-acme/lego/v4/registration"
 )
 
+// Config holds the configuration for the certificate provisioner
+type Config struct {
+	Email           string
+	HostName        string
+	TLSDirectoryURL string
+	TLSKeyType      certcrypto.KeyType
+	IsStaging       bool
+}
+
 // MyUser implements acme.User
 type MyUser struct {
 	Email        string
@@ -34,266 +43,285 @@ type MyUser struct {
 func (u *MyUser) GetEmail() string {
 	return u.Email
 }
+
 func (u MyUser) GetRegistration() *registration.Resource {
 	return u.Registration
 }
+
 func (u *MyUser) GetPrivateKey() crypto.PrivateKey {
 	return u.key
 }
 
-func attest(data []byte) []byte {
+// loadConfig loads configuration from environment variables
+func loadConfig() (*Config, error) {
+	email := os.Getenv("LETS_ENCRYPT_EMAIL_ADDRESS")
+	if email == "" {
+		return nil, fmt.Errorf("environment variable LETS_ENCRYPT_EMAIL_ADDRESS must be set")
+	}
+
+	hostName := os.Getenv("VERIFIED_HOST_NAME")
+	if hostName == "" {
+		return nil, fmt.Errorf("environment variable VERIFIED_HOST_NAME must be set")
+	}
+
+	tlsKeyType := os.Getenv("TLS_KEY_TYPE")
+	if tlsKeyType == "" {
+		tlsKeyType = "EC256"
+	}
+
+	keyType, err := parseTLSKeyType(tlsKeyType)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Config{
+		Email:           email,
+		HostName:        hostName,
+		TLSDirectoryURL: lego.LEDirectoryStaging, // Default to staging for safety
+		TLSKeyType:      keyType,
+		IsStaging:       true,
+	}, nil
+}
+
+func parseTLSKeyType(keyType string) (certcrypto.KeyType, error) {
+	switch strings.ToUpper(keyType) {
+	case "EC256":
+		return certcrypto.EC256, nil
+	case "EC384":
+		return certcrypto.EC384, nil
+	case "RSA2048":
+		return certcrypto.RSA2048, nil
+	case "RSA4096":
+		return certcrypto.RSA4096, nil
+	case "RSA8192":
+		return certcrypto.RSA8192, nil
+	default:
+		return certcrypto.EC256, fmt.Errorf("invalid TLS_KEY_TYPE '%s'. Valid options are: EC256, EC384, RSA2048, RSA4096, RSA8192", keyType)
+	}
+}
+
+func attest(data []byte) ([]byte, error) {
 	attestation := lib.FakeAttestation{
 		AttestedData: data,
 	}
 	log.Printf("Attestation data: %x", attestation.AttestedData)
 
-	// Serialize to JSON
 	jsonData, err := json.Marshal(attestation)
 	if err != nil {
-		log.Fatalf("FATAL: Failed to marshal attestation to JSON: %v", err)
+		return nil, fmt.Errorf("failed to marshal attestation to JSON: %w", err)
 	}
 
-	// Calculate SHA256 hash of the JSON
 	hash := sha256.Sum256(jsonData)
 
-	// Create output directory if it doesn't exist
 	outputDir := "output-attestations"
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		log.Fatalf("FATAL: Failed to create output directory: %v", err)
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	// Write the JSON to a file named with the hash
-	outputPath := filepath.Join(outputDir, base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(hash[:])+".bin")
+	outputPath := filepath.Join(outputDir, lib.Base32Encoder.EncodeToString(hash[:])+".bin")
 	if err := os.WriteFile(outputPath, jsonData, 0644); err != nil {
-		log.Fatalf("FATAL: Failed to write attestation file: %v", err)
+		return nil, fmt.Errorf("failed to write attestation file: %w", err)
 	}
 
 	log.Printf("Generated attestation report and saved to: %s", outputPath)
-	return jsonData
+	return jsonData, nil
+}
+
+func loadOrGenerateAccountKey() (*ecdsa.PrivateKey, error) {
+	accountKeyPath := filepath.Join("output-keys", "account_key.pem")
+
+	if _, err := os.Stat(accountKeyPath); err == nil {
+		keyData, err := os.ReadFile(accountKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read account key file: %w", err)
+		}
+
+		block, _ := pem.Decode(keyData)
+		if block == nil {
+			return nil, fmt.Errorf("failed to decode PEM block from account key file")
+		}
+
+		accountPrivateKey, err := x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse account private key: %w", err)
+		}
+		log.Println("Loaded existing ECDSA P-256 account private key from file.")
+		return accountPrivateKey, nil
+	}
+
+	accountPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate account private key: %w", err)
+	}
+	log.Println("Generated new ECDSA P-256 account private key.")
+
+	if err := os.MkdirAll("output-keys", 0755); err != nil {
+		return nil, fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	accountPrivKeyBytes, err := x509.MarshalECPrivateKey(accountPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal account private key: %w", err)
+	}
+
+	accountPrivKeyPem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: accountPrivKeyBytes})
+	if err := os.WriteFile(accountKeyPath, accountPrivKeyPem, 0600); err != nil {
+		return nil, fmt.Errorf("failed to write account_key.pem: %w", err)
+	}
+	log.Println("Saved new account private key to output-keys/account_key.pem")
+
+	return accountPrivateKey, nil
+}
+
+func generateCertificateKey() (*ecdsa.PrivateKey, []byte, error) {
+	certPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate certificate private key: %w", err)
+	}
+	log.Println("Generated ECDSA P-256 certificate private key.")
+
+	certPublicKey := &certPrivateKey.PublicKey
+	certPublicKeyBytes, err := x509.MarshalPKIXPublicKey(certPublicKey)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to marshal certificate public key: %w", err)
+	}
+	log.Printf("Marshalled certificate public key (X.509 PKIX format): %d bytes\n", len(certPublicKeyBytes))
+
+	return certPrivateKey, certPublicKeyBytes, nil
+}
+
+func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client, error) {
+	myUser := &MyUser{
+		Email: config.Email,
+		key:   accountKey,
+	}
+
+	legoConfig := lego.NewConfig(myUser)
+	legoConfig.CADirURL = config.TLSDirectoryURL
+	legoConfig.Certificate.KeyType = config.TLSKeyType
+
+	client, err := lego.NewClient(legoConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ACME client: %w", err)
+	}
+
+	if err := client.Challenge.SetHTTP01Provider(http01.NewProviderServer("", "80")); err != nil {
+		return nil, fmt.Errorf("failed to set HTTP01 provider: %w", err)
+	}
+
+	if err := client.Challenge.SetTLSALPN01Provider(tlsalpn01.NewProviderServer("", "443")); err != nil {
+		return nil, fmt.Errorf("failed to set TLSALPN01 provider: %w", err)
+	}
+
+	return client, nil
+}
+
+func registerAccount(client *lego.Client, user *MyUser) error {
+	if user.GetRegistration() == nil {
+		reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
+		if err != nil {
+			return fmt.Errorf("failed to register ACME account: %w", err)
+		}
+		user.Registration = reg
+		log.Println("ACME account registration successful.")
+	} else {
+		log.Println("ACME account already registered.")
+	}
+	return nil
+}
+
+func saveArtifacts(certificates *certificate.Resource, accountKey *ecdsa.PrivateKey) error {
+	outputDir := "output-keys"
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	filePermsPrivate := os.FileMode(0600)
+	filePermsPublic := os.FileMode(0644)
+
+	// Save account private key
+	accountPrivKeyBytes, err := x509.MarshalECPrivateKey(accountKey)
+	if err != nil {
+		return fmt.Errorf("failed to marshal account private key: %w", err)
+	}
+	accountPrivKeyPem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: accountPrivKeyBytes})
+	if err := os.WriteFile(filepath.Join(outputDir, "account_key.pem"), accountPrivKeyPem, filePermsPrivate); err != nil {
+		return fmt.Errorf("failed to write account_key.pem: %w", err)
+	}
+
+	// Save certificate
+	if err := os.WriteFile(filepath.Join(outputDir, "certificate.crt"), certificates.Certificate, filePermsPublic); err != nil {
+		return fmt.Errorf("failed to write certificate.crt: %w", err)
+	}
+
+	// Save certificate private key
+	if err := os.WriteFile(filepath.Join(outputDir, "certificate_key.pem"), certificates.PrivateKey, filePermsPrivate); err != nil {
+		return fmt.Errorf("failed to write certificate_key.pem: %w", err)
+	}
+
+	return nil
 }
 
 func main() {
 	log.Println("Starting certificate provisioning process...")
 
-	// --- 1. Get Configuration ---
-	email := os.Getenv("LETS_ENCRYPT_EMAIL_ADDRESS")
-	if email == "" {
-		log.Fatal("FATAL: Environment variable LETS_ENCRYPT_EMAIL_ADDRESS must be set")
-	}
-	log.Printf("Using Let's Encrypt email: %s\n", email)
-
-	hostName := os.Getenv("VERIFIED_HOST_NAME")
-	if hostName == "" {
-		log.Fatal("FATAL: Environment variable VERIFIED_HOST_NAME must be set")
-	}
-	log.Printf("Using host name: %s\n", hostName)
-
-	// --- 2. Generate Account Key ---
-	// Create a user account private key. Let's Encrypt requires this for registration.
-	// Using ECDSA P-256 as it's common and efficient.
-	accountPrivateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	config, err := loadConfig()
 	if err != nil {
-		log.Fatalf("FATAL: Failed to generate account private key: %v", err)
+		log.Fatalf("Failed to load configuration: %v", err)
 	}
-	log.Println("Generated ECDSA P-256 account private key.")
 
-	// --- 3. Calculate Public Key and Hash ---
-	// Get the public key associated with the account private key.
-	accountPublicKey := &accountPrivateKey.PublicKey
-	// Marshal the public key into DER-encoded PKIX format (standard).
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(accountPublicKey)
+	accountKey, err := loadOrGenerateAccountKey()
 	if err != nil {
-		log.Fatalf("FATAL: Failed to marshal public key: %v", err)
-	}
-	log.Printf("Marshalled public key (X.509 PKIX format): %d bytes\n", len(publicKeyBytes))
-
-	// Calculate the SHA256 hash of the public key bytes.
-	publicKeyHash := sha256.Sum256(publicKeyBytes)
-	log.Printf("Calculated SHA256 hash of public key: %x\n", publicKeyHash)
-
-	// --- 4. Attest to the Public Key Hash ---
-	// Pass the hash to the (placeholder) attestation function.
-	// In a real scenario, this binds the TEE's identity to the public key.
-	attestationReport := attest(publicKeyHash[:]) // Pass the hash slice
-
-	// --- 5. Hash the Attestation Report ---
-	// Calculate the SHA256 hash of the entire attestation report.
-	attestationHash := sha256.Sum256(attestationReport)
-	log.Printf("Calculated SHA256 hash of attestation report: %x\n", attestationHash)
-
-	// --- 6. Create Subdomain from Attestation Hash ---
-	// Encode the attestation hash using URL-safe Base32 without padding.
-	// Let's Encrypt prefers lowercase domain names.
-	base32Encoder := base32.StdEncoding.WithPadding(base32.NoPadding)
-	encodedAttestationHash := strings.ToLower(base32Encoder.EncodeToString(attestationHash[:]))
-	log.Printf("Calculated SHA256 hash of attestation report, encoded: %s\n", encodedAttestationHash)
-
-	// Construct the target domains.
-	subdomain := encodedAttestationHash + "." + hostName
-	primaryDomain := hostName
-	targetDomains := []string{subdomain, primaryDomain}
-	log.Printf("Target domains for certificate: %v\n", targetDomains)
-
-	// --- 7. Configure Let's Encrypt Client ---
-	myUser := MyUser{
-		Email: email,
-		key:   accountPrivateKey,
+		log.Fatalf("Failed to load/generate account key: %v", err)
 	}
 
-	config := lego.NewConfig(&myUser)
-
-	// !! IMPORTANT !! Use Staging for testing, Production for real certs.
-	// config.CADirURL = lego.LEDirectoryProduction
-	config.CADirURL = lego.LEDirectoryStaging // SAFER FOR TESTING
-	log.Printf("Using Let's Encrypt directory URL: %s\n", config.CADirURL)
-
-	// Configure the type of key used for the *certificate* itself.
-	// RSA 2048 is common, but EC256/EC384 are also good options.
-	config.Certificate.KeyType = certcrypto.RSA2048 // Or certcrypto.EC256, etc.
-	log.Printf("Requesting certificate with key type: %s\n", config.Certificate.KeyType)
-
-	// Create the Let's Encrypt client.
-	client, err := lego.NewClient(config)
+	certPrivateKey, certPublicKeyBytes, err := generateCertificateKey()
 	if err != nil {
-		log.Fatalf("FATAL: Failed to create ACME client: %v", err)
+		log.Fatalf("Failed to generate certificate key: %v", err)
 	}
 
-	// --- 8. Set up Challenge Providers ---
-	// Configure how Let's Encrypt can verify domain ownership.
-	log.Printf("Setting up HTTP-01 challenge provider on port 80")
-	err = client.Challenge.SetHTTP01Provider(http01.NewProviderServer("", "80"))
+	certPublicKeyHash := sha256.Sum256(certPublicKeyBytes)
+	certAttestationReport, err := attest(certPublicKeyHash[:])
 	if err != nil {
-		log.Fatalf("FATAL: Failed to set HTTP01 provider: %v", err)
+		log.Fatalf("Failed to generate attestation: %v", err)
 	}
 
-	log.Printf("Setting up TLS-ALPN-01 challenge provider on port 443")
-	err = client.Challenge.SetTLSALPN01Provider(tlsalpn01.NewProviderServer("", "443"))
+	certAttestationHash := sha256.Sum256(certAttestationReport)
+	certBase32Encoder := lib.Base32Encoder
+	certEncodedAttestationHash := strings.ToLower(certBase32Encoder.EncodeToString(certAttestationHash[:]))
+
+	certSubdomain := certEncodedAttestationHash + "." + config.HostName
+	certTargetDomains := []string{certSubdomain, config.HostName}
+
+	client, err := setupLegoClient(config, accountKey)
 	if err != nil {
-		log.Fatalf("FATAL: Failed to set TLSALPN01 provider: %v", err)
+		log.Fatalf("Failed to setup Lego client: %v", err)
 	}
 
-	// --- 9. Register Account ---
-	// Register the account with Let's Encrypt if it's new.
-	log.Println("Registering ACME account...")
-	// Check if registration exists, otherwise register
-	if myUser.GetRegistration() == nil {
-		reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
-		if err != nil {
-			log.Fatalf("FATAL: Failed to register ACME account: %v", err)
-		}
-		myUser.Registration = reg
-		log.Println("ACME account registration successful.")
-	} else {
-		log.Println("ACME account already registered.")
+	myUser := &MyUser{
+		Email: config.Email,
+		key:   accountKey,
 	}
 
-	// --- 10. Obtain Certificate ---
-	// Request the certificate for the specified domains.
+	if err := registerAccount(client, myUser); err != nil {
+		log.Fatalf("Failed to register account: %v", err)
+	}
+
 	request := certificate.ObtainRequest{
-		Domains: targetDomains,
-		Bundle:  true, // Bundle includes the intermediate certificate.
+		Domains:    certTargetDomains,
+		Bundle:     true,
+		PrivateKey: certPrivateKey,
 	}
-	log.Printf("Requesting certificate for domains: %v\n", request.Domains)
+
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
-		// Log detailed error if challenge fails
-		log.Fatalf("FATAL: Failed to obtain certificate: %v\n"+
-			"Check network connectivity, port forwarding, and firewall rules.\n"+
-			"Ensure the domains %v correctly resolve to this machine's public IP.",
+		log.Fatalf("Failed to obtain certificate: %v\nCheck network connectivity, port forwarding, and firewall rules.\nEnsure the domains %v correctly resolve to this machine's public IP.",
 			err, request.Domains)
 	}
-	log.Println("Successfully obtained certificate.")
-	log.Printf("Certificate URL: %s\n", certificates.CertURL)
 
-	// --- 11. Parse Certificate and Calculate Public Key Hash ---
-	// Parse the certificate to get its public key
-	certBlock, _ := pem.Decode(certificates.Certificate)
-	if certBlock == nil || certBlock.Type != "CERTIFICATE" {
-		log.Fatal("FATAL: Failed to decode certificate PEM block")
+	if err := saveArtifacts(certificates, accountKey); err != nil {
+		log.Fatalf("Failed to save artifacts: %v", err)
 	}
-	cert, err := x509.ParseCertificate(certBlock.Bytes)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to parse certificate: %v", err)
-	}
-
-	// Marshal the certificate's public key into DER-encoded PKIX format
-	certPublicKeyBytes, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to marshal certificate public key: %v", err)
-	}
-	log.Printf("Marshalled certificate public key (X.509 PKIX format): %d bytes\n", len(certPublicKeyBytes))
-
-	// Calculate the SHA256 hash of the public key bytes
-	certPublicKeyHash := sha256.Sum256(certPublicKeyBytes)
-	log.Printf("Calculated SHA256 hash of certificate public key: %x\n", certPublicKeyHash)
-
-	// --- 12. Attest to the Certificate's Public Key Hash ---
-	// Pass the hash to the attestation function
-	certAttestationReport := attest(certPublicKeyHash[:]) // Pass the hash slice
-
-	// --- 13. Hash the Attestation Report ---
-	// Calculate the SHA256 hash of the entire attestation report
-	certAttestationHash := sha256.Sum256(certAttestationReport)
-	log.Printf("Calculated SHA256 hash of attestation report: %x\n", certAttestationHash)
-
-	// --- 14. Create Subdomain from Attestation Hash ---
-	// Encode the attestation hash using URL-safe Base32 without padding
-	// Let's Encrypt prefers lowercase domain names
-	certBase32Encoder := base32.StdEncoding.WithPadding(base32.NoPadding)
-	certEncodedAttestationHash := strings.ToLower(certBase32Encoder.EncodeToString(certAttestationHash[:]))
-	log.Printf("Calculated SHA256 hash of attestation report, encoded: %s\n", certEncodedAttestationHash)
-
-	// Construct the target domains
-	certSubdomain := certEncodedAttestationHash + "." + hostName
-	certPrimaryDomain := hostName
-	certTargetDomains := []string{certSubdomain, certPrimaryDomain}
-	log.Printf("Target domains for certificate: %v\n", certTargetDomains)
-
-	// --- 15. Create Output Directory ---
-	outputDir := "output-keys"
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		log.Fatalf("FATAL: Failed to create output directory: %v", err)
-	}
-	log.Printf("Created output directory: %s", outputDir)
-
-	// --- 16. Save Artifacts ---
-	filePermsPrivate := os.FileMode(0600) // Read/write for owner only
-	filePermsPublic := os.FileMode(0644)  // Read for all, write for owner
-
-	// a) Account Private Key (PEM format)
-	accountPrivKeyBytes, err := x509.MarshalECPrivateKey(accountPrivateKey)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to marshal account private key: %v", err)
-	}
-	accountPrivKeyPem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: accountPrivKeyBytes})
-	err = os.WriteFile(filepath.Join(outputDir, "account_key.pem"), accountPrivKeyPem, filePermsPrivate)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to write account_key.pem: %v", err)
-	}
-	log.Println("Saved account private key to output-keys/account_key.pem")
-
-	// b) Public Key (PEM format)
-	publicKeyPem := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicKeyBytes})
-	err = os.WriteFile(filepath.Join(outputDir, "public_key.pem"), publicKeyPem, filePermsPublic)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to write public_key.pem: %v", err)
-	}
-	log.Println("Saved public key to output-keys/public_key.pem")
-
-	// c) Certificate (PEM format - includes leaf + intermediate chain)
-	err = os.WriteFile(filepath.Join(outputDir, "certificate.crt"), certificates.Certificate, filePermsPublic)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to write certificate.crt: %v", err)
-	}
-	log.Println("Saved certificate chain to output-keys/certificate.crt")
-
-	// d) Certificate's Private Key (PEM format)
-	// This key corresponds to the certificate, generated based on config.Certificate.KeyType.
-	err = os.WriteFile(filepath.Join(outputDir, "certificate_key.pem"), certificates.PrivateKey, filePermsPrivate)
-	if err != nil {
-		log.Fatalf("FATAL: Failed to write certificate_key.pem: %v", err)
-	}
-	log.Println("Saved certificate's private key to output-keys/certificate_key.pem")
 
 	log.Println("\n--- Process Complete ---")
 	log.Printf("Successfully obtained and saved certificate and related artifacts for: %v\n", certTargetDomains)

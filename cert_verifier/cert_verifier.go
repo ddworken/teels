@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base32"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -12,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/ddworken/teels/lib"
 )
 
 // FakeAttestation represents a simplified attestation structure
@@ -19,30 +20,25 @@ type FakeAttestation struct {
 	AttestedData []byte `json:"attested_data"`
 }
 
-const (
-	reportDataLength = 64 // Standard length for SEV/SNP REPORT_DATA
-	hashLength       = 32 // SHA256 hash length
-)
-
 func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
-	encodedSubdomainPart := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(decodedSubdomainPart)
+	encodedSubdomainPart := lib.Base32Encoder.EncodeToString(decodedSubdomainPart)
 	filePath := filepath.Join("output-attestations", encodedSubdomainPart+".bin")
 
 	// Read the attestation file
 	attestationBytes, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("Error reading attestation file: %v\n", err)
+		return fmt.Errorf("error reading attestation file: %v", err)
 	}
 
 	// Deserialize the attestation
 	var attestation FakeAttestation
 	if err := json.Unmarshal(attestationBytes, &attestation); err != nil {
-		return fmt.Errorf("Error deserializing attestation: %v\n", err)
+		return fmt.Errorf("error deserializing attestation: %v", err)
 	}
 
 	// Check if the attested data matches the pubKeyHash
 	if !bytes.Equal(attestation.AttestedData, pubKeyHash) {
-		return fmt.Errorf("Attested data does not match public key hash: \npubKeyHash:   %x \nattestedData: %x", pubKeyHash, attestation.AttestedData)
+		return fmt.Errorf("attested data does not match public key hash: pubKeyHash: %x attestedData: %x", pubKeyHash, attestation.AttestedData)
 	}
 
 	return nil
@@ -96,7 +92,7 @@ func validateCertificate(cert *x509.Certificate) error {
 	}
 
 	// Use standard Base32 decoding without padding
-	decodedSubdomainPart, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(subdomainPart))
+	decodedSubdomainPart, err := lib.Base32Encoder.DecodeString(strings.ToUpper(subdomainPart))
 	if err != nil {
 		return fmt.Errorf("failed to decode subdomain '%s' using Base32: %w", subdomainPart, err)
 	}
