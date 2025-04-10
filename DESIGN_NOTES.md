@@ -155,25 +155,32 @@ GCP attestations: Unclear if it easily gives me what I want
  ---
 
  ```
-aws ec2 run-instances \
---image-id ami-0515da4bec0819859 \
---count 1 \
---instance-type c7g.large \
---region ap-south-1 \
---key-name mac \
---enclave-options 'Enabled=true'
+aws ec2 create-security-group --group-name "launch-wizard-2" --description "launch-wizard-2 created 2025-04-10T23:11:38.745Z" --vpc-id "vpc-0a6e786e59e628587" 
+aws ec2 authorize-security-group-ingress --group-id "sg-preview-2" --ip-permissions '{"IpProtocol":"tcp","FromPort":22,"ToPort":22,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}' '{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}' '{"IpProtocol":"tcp","FromPort":80,"ToPort":80,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}' 
+aws ec2 run-instances --image-id "ami-0515da4bec0819859" --instance-type "c7g.large" --key-name "m1" --block-device-mappings '{"DeviceName":"/dev/xvda","Ebs":{"Encrypted":false,"DeleteOnTermination":true,"Iops":3000,"SnapshotId":"snap-0eb85e009b6f0aabf","VolumeSize":20,"VolumeType":"gp3","Throughput":125}}' --network-interfaces '{"AssociatePublicIpAddress":true,"DeviceIndex":0,"Groups":["sg-preview-2"]}' --tag-specifications '{"ResourceType":"instance","Tags":[{"Key":"Name","Value":"nitro2"}]}' --metadata-options '{"HttpEndpoint":"enabled","HttpPutResponseHopLimit":2,"HttpTokens":"required"}' --private-dns-name-options '{"HostnameType":"ip-name","EnableResourceNameDnsARecord":true,"EnableResourceNameDnsAAAARecord":false}' --count "1" 
 
 ssh ec2-user@ec2-65-2-80-196.ap-south-1.compute.amazonaws.com
+# attempt 2: 15.207.221.31
+
+scp ~/code/teels-keys/id_ed25519.pub ec2-user@15.207.221.31:/home/ec2-user/.ssh/
+scp ~/code/teels-keys/id_ed25519 ec2-user@15.207.221.31:/home/ec2-user/.ssh/
 
 sudo yum install -y docker git go
 sudo service docker start
 sudo usermod -a -G docker ec2-user
 sudo dnf install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel -y
 sudo usermod -aG ne ec2-user
+git clone git@github.com:ddworken/teels.git
+git config --global user.name "David Dworken
+git config --global user.email "david@daviddworken.com
+
+
+# Logout and then log back in
 sudo nano /etc/nitro_enclaves/allocator.yaml # configure 1 CPU and memory limit 
 sudo systemctl enable --now nitro-enclaves-allocator.service
 
-sudo socat tcp-listen:80,fork,reuseaddr vsock-connect:16:80
+cd teels
+docker build -t hello_world -f hello_world_demo/Dockerfile .
 
 nitro-cli run-enclave --eif-path hello-nitro.eif --memory 2000 --cpu-count 1 --enclave-cid 16 --debug-mode
  ```

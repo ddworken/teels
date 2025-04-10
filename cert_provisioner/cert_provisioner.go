@@ -100,7 +100,7 @@ func parseTLSKeyType(keyType string) (certcrypto.KeyType, error) {
 	}
 }
 
-func attest(data []byte) ([]byte, error) {
+func createFakeAttestation(data []byte) ([]byte, error) {
 	attestation := lib.AttestationReport{
 		UnverifiedAttestedData: data,
 		AwsNitroAttestation:    nil,
@@ -208,11 +208,11 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 
 	listener, err := vsock.Listen(80, nil)
 	if err != nil {
-return nil, err
-}
+		return nil, err
+	}
 
 	http01Provider := http01.NewProviderServer("", "80")
-http01Provider.SetListener(listener)
+	http01Provider.SetListener(listener)
 
 	if err := client.Challenge.SetHTTP01Provider(http01Provider); err != nil {
 		return nil, fmt.Errorf("failed to set HTTP01 provider: %w", err)
@@ -286,7 +286,7 @@ func main() {
 	}
 
 	certPublicKeyHash := sha256.Sum256(certPublicKeyBytes)
-	certAttestationReport, err := attest(certPublicKeyHash[:])
+	certAttestationReport, err := createFakeAttestation(certPublicKeyHash[:])
 	if err != nil {
 		log.Fatalf("Failed to generate attestation: %v", err)
 	}
