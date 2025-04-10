@@ -165,4 +165,11 @@ aws ec2 run-instances \
 
 ssh ec2-user@ec2-65-2-80-196.ap-south-1.compute.amazonaws.com
 
+sudo yum install -y docker git 
+sudo service docker start
+sudo usermod -a -G docker ec2-user
+sudo dnf install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel -y
+sudo usermod -aG ne ec2-user
+
+nitro-cli run-enclave --eif-path hello-nitro.eif --memory 2000 --cpu-count 1 --enclave-cid 16 --debug-mode
  ```
