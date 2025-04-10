@@ -19,9 +19,9 @@ var Base32Encoder = base32.StdEncoding.WithPadding(base32.NoPadding)
 // GCSBucketName is the name of the Google Cloud Storage bucket to use
 const GCSBucketName = "teels-attestations"
 
-// FakeAttestation represents a simulated attestation report
-type FakeAttestation struct {
-	AttestedData []byte `json:"attested_data"`
+type AttestationReport struct {
+	UnverifiedAttestedData []byte `json:"unverified_attested_data"`
+	AwsNitroAttestation    []byte `json:"aws_nitro_attestation"`
 }
 
 // PublishToGCS publishes content to a GCS bucket using S3-compatible APIs

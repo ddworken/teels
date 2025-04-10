@@ -4,6 +4,8 @@ go 1.23.0
 
 require github.com/go-acme/lego/v4 v4.22.2
 
+replace github.com/go-acme/lego/v4 v4.22.2 => github.com/ddworken/lego/v4
+
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect

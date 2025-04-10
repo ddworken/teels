@@ -26,13 +26,13 @@ func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash
 	}
 
 	// Deserialize the attestation
-	var attestation lib.FakeAttestation
+	var attestation lib.AttestationReport
 	if err := json.Unmarshal(attestationBytes, &attestation); err != nil {
 		return fmt.Errorf("error deserializing attestation: %v", err)
 	}
 
 	// Check if the attested data matches the pubKeyHash
-	if !bytes.Equal(attestation.AttestedData, pubKeyHash) {
+	if !bytes.Equal(attestation.UnverifiedAttestedData, pubKeyHash) {
 		return fmt.Errorf("attested data does not match public key hash: pubKeyHash: %x attestedData: %x", pubKeyHash, attestation.AttestedData)
 	}
 
