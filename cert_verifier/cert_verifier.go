@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil" // Or os.ReadFile in Go 1.16+
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,23 +15,18 @@ import (
 	"github.com/ddworken/teels/lib"
 )
 
-// FakeAttestation represents a simplified attestation structure
-type FakeAttestation struct {
-	AttestedData []byte `json:"attested_data"`
-}
-
 func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
 	encodedSubdomainPart := lib.Base32Encoder.EncodeToString(decodedSubdomainPart)
 	filePath := filepath.Join("output-attestations", encodedSubdomainPart+".bin")
 
 	// Read the attestation file
-	attestationBytes, err := ioutil.ReadFile(filePath)
+	attestationBytes, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("error reading attestation file: %v", err)
 	}
 
 	// Deserialize the attestation
-	var attestation FakeAttestation
+	var attestation lib.FakeAttestation
 	if err := json.Unmarshal(attestationBytes, &attestation); err != nil {
 		return fmt.Errorf("error deserializing attestation: %v", err)
 	}
@@ -47,7 +42,7 @@ func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash
 // validateCertificate takes an x509 certificate and performs a series of validations.
 // It returns an error if any validation fails, otherwise nil.
 func validateCertificate(cert *x509.Certificate) error {
-	fmt.Println("Starting certificate validation...")
+	log.Println("Starting certificate validation...")
 
 	// Get the expected host name from environment variable
 	expectedBaseDomain := os.Getenv("VERIFIED_HOST_NAME")
@@ -56,7 +51,7 @@ func validateCertificate(cert *x509.Certificate) error {
 	}
 
 	// 1. Check Hostnames
-	fmt.Println("Step 1: Validating hostnames...")
+	log.Println("Step 1: Validating hostnames...")
 	if len(cert.DNSNames) != 2 {
 		return fmt.Errorf("expected exactly 2 DNS names, but found %d", len(cert.DNSNames))
 	}
@@ -82,10 +77,10 @@ func validateCertificate(cert *x509.Certificate) error {
 	if subdomainHostname == "" {
 		return fmt.Errorf("required subdomain of %s not found in DNS names", expectedBaseDomain)
 	}
-	fmt.Printf(" -> Hostnames validated: %s, %s\n", expectedBaseDomain, subdomainHostname)
+	log.Printf(" -> Hostnames validated: %s, %s\n", expectedBaseDomain, subdomainHostname)
 
 	// 2. Parse Subdomain and Decode Base32
-	fmt.Println("Step 2: Parsing and decoding subdomain...")
+	log.Println("Step 2: Parsing and decoding subdomain...")
 	subdomainPart := strings.TrimSuffix(subdomainHostname, "."+expectedBaseDomain)
 	if subdomainPart == "" {
 		return fmt.Errorf("extracted subdomain part is empty for hostname %s", subdomainHostname)
@@ -96,19 +91,19 @@ func validateCertificate(cert *x509.Certificate) error {
 	if err != nil {
 		return fmt.Errorf("failed to decode subdomain '%s' using Base32: %w", subdomainPart, err)
 	}
-	fmt.Printf(" -> Decoded subdomain '%s' to: %x\n", subdomainPart, decodedSubdomainPart)
+	log.Printf(" -> Decoded subdomain '%s' to: %x\n", subdomainPart, decodedSubdomainPart)
 
 	// 3. Calculate Public Key SHA256 Hash and Compare with REPORT_DATA
-	fmt.Println("Step 3: Calculating public key hash and comparing with REPORT_DATA...")
+	log.Println("Step 3: Calculating public key hash and comparing with REPORT_DATA...")
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
 	if err != nil {
 		return fmt.Errorf("failed to marshal public key: %w", err)
 	}
 	pubKeyHash := sha256.Sum256(pubKeyBytes)
-	fmt.Printf(" -> Calculated public key SHA256 hash: %x\n", pubKeyHash)
+	log.Printf(" -> Calculated public key SHA256 hash: %x\n", pubKeyHash)
 
 	// 4. Validate the attestation
-	fmt.Println("Step 4: Fetching attestation...")
+	log.Println("Step 4: Fetching attestation...")
 	err = validateAttestationForPublicKeyHash(decodedSubdomainPart, pubKeyHash[:])
 	if err != nil {
 		return fmt.Errorf("failed to validate attestation for public key hash: %w", err)
@@ -193,41 +188,36 @@ func validateCertificate(cert *x509.Certificate) error {
 		}
 	*/
 
-	fmt.Println(" -> Public key hash matches REPORT_DATA.")
-	fmt.Println("Certificate validation successful!")
+	log.Println(" -> Public key hash matches REPORT_DATA.")
+	log.Println("Certificate validation successful!")
 	return nil
 }
 
-// --- Example Usage ---
-
 func main() {
-	certPEM, err := ioutil.ReadFile("output-keys/certificate.crt")
+	certPEM, err := os.ReadFile("output-keys/certificate.crt")
 	if err != nil {
-		fmt.Printf("Error reading certificate file: %v\n", err)
-		// Use os.Exit(1) for failure in main
-		return // Or panic, depending on desired program behavior
+		log.Printf("Error reading certificate file: %v\n", err)
+		os.Exit(1)
 	}
 
 	block, _ := pem.Decode(certPEM)
 	if block == nil || block.Type != "CERTIFICATE" {
-		fmt.Println("Error: Failed to decode PEM block containing certificate")
+		log.Println("Error: Failed to decode PEM block containing certificate")
 		return
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		fmt.Printf("Error parsing certificate: %v\n", err)
+		log.Printf("Error parsing certificate: %v\n", err)
 		return
 	}
 
 	// Run the validation
 	err = validateCertificate(cert)
 	if err != nil {
-		// If any validation fails, the overall program should fail.
-		// Log the specific error and exit, or panic.
-		fmt.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
-		// os.Exit(1) // Use this in a real application to indicate failure
+		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
+		os.Exit(1)
 	} else {
-		fmt.Println("\n--- Certificate Validation SUCCEEDED ---")
+		log.Println("\n--- Certificate Validation SUCCEEDED ---")
 	}
 }
