@@ -143,3 +143,26 @@ Write a go function that takes in a TLS cert in x509 format and applies a series
 4. Uses https://github.com/google/go-sev-guest to parse and verify the attestation
 5. Extracts the REPORT_DATA field from the attestation
 6. Calculates the sha256 hash of the public key (in x509 format) in the cert and asserts that it matches the data in the REPORT_DATA field 
+
+--- 
+
+SEV-SNP spec: https://www.amd.com/content/dam/amd/en/documents/epyc-technical-docs/specifications/56860.pdf
+
+GCP attestations: Unclear if it easily gives me what I want 
+* https://cloud.google.com/confidential-computing/confidential-vm/docs/attestation
+* https://cloud.google.com/confidential-computing/confidential-vm/docs/token-claims
+ 
+ ---
+
+ ```
+aws ec2 run-instances \
+--image-id ami-0515da4bec0819859 \
+--count 1 \
+--instance-type c7g.large \
+--region ap-south-1 \
+--key-name mac \
+--enclave-options 'Enabled=true'
+
+ssh ec2-user@ec2-65-2-80-196.ap-south-1.compute.amazonaws.com
+
+ ```
