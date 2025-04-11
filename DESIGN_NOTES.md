@@ -171,8 +171,8 @@ sudo usermod -a -G docker ec2-user
 sudo dnf install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel -y
 sudo usermod -aG ne ec2-user
 git clone git@github.com:ddworken/teels.git
-git config --global user.name "David Dworken
-git config --global user.email "david@daviddworken.com
+git config --global user.name "David Dworken"
+git config --global user.email "david@daviddworken.com"
 sudo dd if=/dev/zero of=/swapfile bs=1M count=1024
 chmod 0600 /swapfile
 sudo mkswap /swapfile
