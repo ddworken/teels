@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ddworken/teels/lib"
+	nitro "github.com/veracruz-project/go-nitro-enclave-attestation-document"
 )
 
 func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
@@ -33,7 +34,41 @@ func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash
 
 	// Check if the attested data matches the pubKeyHash
 	if !bytes.Equal(attestation.UnverifiedAttestedData, pubKeyHash) {
-		return fmt.Errorf("attested data does not match public key hash: pubKeyHash: %x attestedData: %x", pubKeyHash, attestation.AttestedData)
+		return fmt.Errorf("attested data does not match public key hash: pubKeyHash: %x attestedData: %x", pubKeyHash, attestation.UnverifiedAttestedData)
+	}
+
+	return nil
+}
+
+func validateAwsNitroAttestation(pubKeyHash []byte, attestation lib.AttestationReport) error {
+	if attestation.AwsNitroAttestation == nil {
+		return fmt.Errorf("no AWS Nitro attestation data found")
+	}
+
+	// Read the AWS Nitro root certificate
+	rootCertPEM, err := os.ReadFile("cert_verifier/aws_nitro_root.pem")
+	if err != nil {
+		return fmt.Errorf("failed to read AWS Nitro root certificate: %w", err)
+	}
+
+	block, _ := pem.Decode(rootCertPEM)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return fmt.Errorf("failed to decode PEM block containing certificate")
+	}
+
+	rootCert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse root certificate: %w", err)
+	}
+
+	// Validate the attestation document using the veracruz-project library
+	doc, err := nitro.AuthenticateDocument(attestation.AwsNitroAttestation, *rootCert, true)
+	if err != nil {
+		return fmt.Errorf("failed to validate AWS Nitro attestation: %w", err)
+	}
+
+	if !bytes.Equal(doc.User_Data, pubKeyHash) {
+		return fmt.Errorf("attested data does not match public key hash: pubKeyHash: %x attestedData: %x", pubKeyHash, doc.User_Data)
 	}
 
 	return nil
