@@ -1,3 +1,5 @@
 output-keys/
 output-attestations/
 target/
+*.eif
+main

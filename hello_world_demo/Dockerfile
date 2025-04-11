@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY go.mod ./
 COPY go.sum ./
+COPY vndr/ ./vndr/
 RUN go mod download
 COPY hello_world_demo/main.go ./
 

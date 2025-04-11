@@ -165,7 +165,7 @@ ssh ec2-user@ec2-65-2-80-196.ap-south-1.compute.amazonaws.com
 scp ~/code/teels-keys/id_ed25519.pub ec2-user@15.207.221.31:/home/ec2-user/.ssh/
 scp ~/code/teels-keys/id_ed25519 ec2-user@15.207.221.31:/home/ec2-user/.ssh/
 
-sudo yum install -y docker git go
+sudo yum install -y docker git go socat htop
 sudo service docker start
 sudo usermod -a -G docker ec2-user
 sudo dnf install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel -y
@@ -173,14 +173,21 @@ sudo usermod -aG ne ec2-user
 git clone git@github.com:ddworken/teels.git
 git config --global user.name "David Dworken
 git config --global user.email "david@daviddworken.com
-
+sudo dd if=/dev/zero of=/swapfile bs=1M count=1024
+chmod 0600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
 
 # Logout and then log back in
 sudo nano /etc/nitro_enclaves/allocator.yaml # configure 1 CPU and memory limit 
 sudo systemctl enable --now nitro-enclaves-allocator.service
 
 cd teels
+rm *.eif
 docker build -t hello_world -f hello_world_demo/Dockerfile .
+nitro-cli build-enclave --docker-uri hello_world --output-file hello_world.eif
 
-nitro-cli run-enclave --eif-path hello-nitro.eif --memory 2000 --cpu-count 1 --enclave-cid 16 --debug-mode
+nitro-cli run-enclave --eif-path hello_world.eif --memory 2000 --cpu-count 1 --enclave-cid 16 --debug-mode
+
+socat tcp-listen:8888,fork,reuseaddr vsock-connect:16:8888
  ```
