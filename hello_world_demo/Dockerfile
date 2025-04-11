@@ -24,8 +24,10 @@ COPY go.mod go.sum ./
 COPY vndr/ ./vndr/
 RUN go mod download
 
-# Copy the source code
+# Copy the source code and static files
 COPY hello_world_demo/main.go ./
+COPY hello_world_demo/formatter.html ./
+COPY hello_world_demo/static/ ./static/
 
 # Build the Go application
 RUN go build -o /enclave-server
@@ -35,9 +37,14 @@ FROM alpine:latest
 
 WORKDIR /app
 
-# Copy only the necessary binaries from previous stages
+# Copy only the necessary binaries and static files from previous stages
 COPY --from=nsm-builder /app/nsm-cli/target/release/nsm-cli /app/
 COPY --from=go-builder /enclave-server /app/
+COPY --from=go-builder /app/formatter.html /app/
+COPY --from=go-builder /app/static/ /app/static/
+
+# Set the working directory to /app
+WORKDIR /app
 
 EXPOSE 8888
 

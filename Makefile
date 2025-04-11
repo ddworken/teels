@@ -1,4 +1,4 @@
-.PHONY: build run
+.PHONY: build run stop
 
 build:
 	rm *.eif || true
@@ -9,3 +9,5 @@ run:
 	nitro-cli run-enclave --eif-path hello_nitro.eif --memory 2048 --cpu-count 1 --enclave-cid 16 --debug-mode
 	sudo socat tcp-listen:80,fork,reuseaddr vsock-connect:16:80
 
+stop:
+	nitro-cli terminate-enclave --all

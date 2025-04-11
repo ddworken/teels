@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Formatter (JSON, HTML, JS)</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f4f4f4;
+            min-height: 100vh;
+            box-sizing: border-box;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap; /* Allow wrapping on smaller screens */
+        }
+
+        label {
+            font-weight: bold;
+            color: #555;
+        }
+
+        select, button {
+            padding: 10px 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        select {
+            flex-grow: 1; /* Allow select to take available space */
+            min-width: 100px; /* Minimum width */
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        button#copyButton {
+            background-color: #28a745;
+        }
+        button#copyButton:hover {
+            background-color: #218838;
+        }
+
+
+        .code-area {
+            display: flex;
+            flex-direction: column;
+            gap: 5px; /* Space between label and textarea */
+            flex-grow: 1; /* Allow text areas to grow */
+        }
+
+         .code-area textarea {
+            width: 100%;
+            height: 300px; /* Adjust as needed */
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.95em;
+            box-sizing: border-box; /* Include padding in width/height */
+            resize: vertical; /* Allow vertical resizing */
+        }
+
+        #outputCode {
+            background-color: #e9ecef;
+        }
+
+        #errorDisplay {
+            color: #dc3545; /* Red color for errors */
+            margin-top: 10px;
+            font-weight: bold;
+            min-height: 1.2em; /* Reserve space even when empty */
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            padding: 5px 10px;
+            display: none; /* Hide initially */
+        }
+    </style>
+    <script src="/static/standalone.js"></script>
+    <script src="/static/babel.js"></script>
+    <script src="/static/estree.js"></script>
+    <script src="/static/html.js"></script>
+</head>
+<body>
+
+    <h1>Code Formatter</h1>
+
+    <div class="container">
+        <div class="code-area">
+            <label for="inputCode">Input Code:</label>
+            <textarea id="inputCode" placeholder="Paste your JSON, HTML, or JavaScript code here..."></textarea>
+        </div>
+
+        <div class="controls">
+            <label for="formatType">Format as:</label>
+            <select id="formatType">
+                <option value="json">JSON</option>
+                <option value="html">HTML</option>
+                <option value="js">JavaScript</option>
+            </select>
+            <button id="formatButton">Format Code</button>
+            <button id="copyButton" title="Copy Output Code">Copy Output</button>
+        </div>
+
+        <div id="errorDisplay"></div>
+
+        <div class="code-area">
+            <label for="outputCode">Formatted Output:</label>
+            <textarea id="outputCode" readonly placeholder="Formatted code will appear here..."></textarea>
+        </div>
+    </div>
+
+    <script>
+        // Get DOM elements
+        const inputCodeEl = document.getElementById('inputCode');
+        const outputCodeEl = document.getElementById('outputCode');
+        const formatTypeEl = document.getElementById('formatType');
+        const formatButton = document.getElementById('formatButton');
+        const copyButton = document.getElementById('copyButton');
+        const errorDisplayEl = document.getElementById('errorDisplay');
+
+        // --- Formatting Logic ---
+
+        async function formatCode() {
+            const code = inputCodeEl.value.trim();
+            const formatType = formatTypeEl.value;
+            outputCodeEl.value = ''; // Clear previous output
+            errorDisplayEl.textContent = ''; // Clear previous errors
+            errorDisplayEl.style.display = 'none'; // Hide error display
+
+            if (!code) {
+                showError('Input code is empty.');
+                return;
+            }
+
+            // Check if Prettier is loaded (important for HTML/JS)
+            if ((formatType === 'html' || formatType === 'js') && (typeof prettier === 'undefined' || typeof prettierPlugins === 'undefined')) {
+                showError('Error: Prettier library not loaded correctly. Check your internet connection or CDN links.');
+                return;
+            }
+
+            try {
+                let formattedCode = '';
+                let parser = '';
+                let plugins = [];
+
+                switch (formatType) {
+                    case 'json':
+                        // Native JSON formatting
+                        const jsonObj = JSON.parse(code); // First parse to validate
+                        formattedCode = JSON.stringify(jsonObj, null, 2); // Then stringify nicely
+                        break;
+
+                    case 'html':
+                        // Use Prettier for HTML
+                        parser = 'html';
+                        plugins = [prettierPlugins.html];
+                        formattedCode = await prettier.format(code, { parser, plugins });
+                        break;
+
+                    case 'js':
+                        // Use Prettier for JavaScript (using babel parser)
+                        parser = 'babel'; // Common choice, handles modern JS syntax
+                        plugins = [prettierPlugins.babel, prettierPlugins.estree]; // Required plugins
+                        formattedCode = await prettier.format(code, { parser, plugins });
+                        break;
+
+                    default:
+                        showError('Invalid format type selected.');
+                        return;
+                }
+
+                outputCodeEl.value = formattedCode;
+
+            } catch (error) {
+                console.error("Formatting Error:", error);
+                showError(`Formatting Error (${formatType}): ${error.message}`);
+                outputCodeEl.value = code; // Put back original code on error maybe? Or leave blank.
+            }
+        }
+
+        // --- Helper Functions ---
+
+        function showError(message) {
+            errorDisplayEl.textContent = message;
+            errorDisplayEl.style.display = 'block'; // Show error display
+        }
+
+        function copyOutput() {
+             if (!outputCodeEl.value) {
+                alert('Nothing to copy!');
+                return;
+            }
+            navigator.clipboard.writeText(outputCodeEl.value)
+                .then(() => {
+                    // Optional: Give visual feedback (e.g., change button text briefly)
+                    const originalText = copyButton.textContent;
+                    copyButton.textContent = 'Copied!';
+                    setTimeout(() => {
+                        copyButton.textContent = originalText;
+                    }, 1500);
+                })
+                .catch(err => {
+                    console.error('Failed to copy text: ', err);
+                    alert('Failed to copy text. Your browser might not support this feature or requires secure context (HTTPS).');
+                });
+        }
+
+
+        // --- Event Listeners ---
+        formatButton.addEventListener('click', formatCode);
+        copyButton.addEventListener('click', copyOutput);
+
+    </script>
+
+</body>
+</html>
