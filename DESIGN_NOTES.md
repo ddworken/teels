@@ -23,148 +23,19 @@ Client verification (removes CT dependency):
 Ideal API:
 * Golang binary. Run it at startup of a TEE and it provisions a cert before the main program is started. Main program can then just run with the cert.
 
-----
-
-Write a go program that is a standalone binary that follows this example code from the acme-go library to create a TLS cert, but it also:
-
-```
-package main
-
-import (
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"fmt"
-	"log"
-
-	"github.com/go-acme/lego/v4/certcrypto"
-	"github.com/go-acme/lego/v4/certificate"
-	"github.com/go-acme/lego/v4/challenge/http01"
-	"github.com/go-acme/lego/v4/challenge/tlsalpn01"
-	"github.com/go-acme/lego/v4/lego"
-	"github.com/go-acme/lego/v4/registration"
-)
-
-// You'll need a user or account type that implements acme.User
-type MyUser struct {
-	Email        string
-	Registration *registration.Resource
-	key          crypto.PrivateKey
-}
-
-func (u *MyUser) GetEmail() string {
-	return u.Email
-}
-func (u MyUser) GetRegistration() *registration.Resource {
-	return u.Registration
-}
-func (u *MyUser) GetPrivateKey() crypto.PrivateKey {
-	return u.key
-}
-
-func main() {
-
-	// Create a user. New accounts need an email and private key to start.
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	myUser := MyUser{
-		Email: "you@yours.com",
-		key:   privateKey,
-	}
-
-	config := lego.NewConfig(&myUser)
-
-	// This CA URL is configured for a local dev instance of Boulder running in Docker in a VM.
-	config.CADirURL = "http://192.168.99.100:4000/directory"
-	config.Certificate.KeyType = certcrypto.RSA2048
-
-	// A client facilitates communication with the CA server.
-	client, err := lego.NewClient(config)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// We specify an HTTP port of 5002 and an TLS port of 5001 on all interfaces
-	// because we aren't running as root and can't bind a listener to port 80 and 443
-	// (used later when we attempt to pass challenges). Keep in mind that you still
-	// need to proxy challenge traffic to port 5002 and 5001.
-	err = client.Challenge.SetHTTP01Provider(http01.NewProviderServer("", "5002"))
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = client.Challenge.SetTLSALPN01Provider(tlsalpn01.NewProviderServer("", "5001"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// New users will need to register
-	reg, err := client.Registration.Register(registration.RegisterOptions{TermsOfServiceAgreed: true})
-	if err != nil {
-		log.Fatal(err)
-	}
-	myUser.Registration = reg
-
-	request := certificate.ObtainRequest{
-		Domains: []string{"mydomain.com"},
-		Bundle:  true,
-	}
-	certificates, err := client.Certificate.Obtain(request)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Each certificate comes back with the cert bytes, the bytes of the client's
-	// private key, and a certificate URL. SAVE THESE TO DISK.
-	fmt.Printf("%#v\n", certificates)
-
-	// ... all done.
-}
-```
-
-1. Defines a function `attest(data []byte) []byte` that I will define later. This function will be defined using TEE-specific functionality to create an attestation bound to the given data.
-2. Calculates the public key (in x509 format)
-3. sha256 Hashes the public key and passes it to attest to get an attestation report 
-4. Calculates the sha256 hash of the attestation report 
-5. Encodes the hash using a url-safe base32 into a subdomain of `$hash.verified-dev.daviddworken.com`. Make sure to disable padding of the base32 value.
-6. Uses lets encrypt to provision a cert for the above subdomain and `verified-dev.daviddworken.com`. Pull the lets encrypt email address from an environment variable named `LETS_ENCRYPT_EMAIL_ADDRESS`.
-7. Writes the public key, private key, cert, and attest values to files to be used by another later program. Use x509 format for all of this. 
-
-----
-
-Write a go function that takes in a TLS cert in x509 format and applies a series of validations. If any of these validations fail, the overall program should fail. The validations are:
-
-1. Check that it is for exactly two hostnames: `verified-dev.daviddworken.com` and some subdomain of `verified-dev.daviddworken.com` (i.e. `xxx.verified-dev.daviddworken.com`)
-2. Parses out the subdomain of `verified-dev.daviddworken.com` (i.e. `xxx.verified-dev.daviddworken.com` --> `xxx`) and decodes it using base32 
-3. Calls `getAttestation(hash []byte) []byte`, a stub function that I'll implement myself to get an attestation from the hash pulled out of the URL 
-4. Uses https://github.com/google/go-sev-guest to parse and verify the attestation
-5. Extracts the REPORT_DATA field from the attestation
-6. Calculates the sha256 hash of the public key (in x509 format) in the cert and asserts that it matches the data in the REPORT_DATA field 
-
 --- 
-
-SEV-SNP spec: https://www.amd.com/content/dam/amd/en/documents/epyc-technical-docs/specifications/56860.pdf
-
-GCP attestations: Unclear if it easily gives me what I want 
-* https://cloud.google.com/confidential-computing/confidential-vm/docs/attestation
-* https://cloud.google.com/confidential-computing/confidential-vm/docs/token-claims
- 
- ---
 
  ```
 aws ec2 create-security-group --group-name "launch-wizard-2" --description "launch-wizard-2 created 2025-04-10T23:11:38.745Z" --vpc-id "vpc-0a6e786e59e628587" 
 aws ec2 authorize-security-group-ingress --group-id "sg-preview-2" --ip-permissions '{"IpProtocol":"tcp","FromPort":22,"ToPort":22,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}' '{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}' '{"IpProtocol":"tcp","FromPort":80,"ToPort":80,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}' 
 aws ec2 run-instances --image-id "ami-0515da4bec0819859" --instance-type "c7g.large" --key-name "m1" --block-device-mappings '{"DeviceName":"/dev/xvda","Ebs":{"Encrypted":false,"DeleteOnTermination":true,"Iops":3000,"SnapshotId":"snap-0eb85e009b6f0aabf","VolumeSize":20,"VolumeType":"gp3","Throughput":125}}' --network-interfaces '{"AssociatePublicIpAddress":true,"DeviceIndex":0,"Groups":["sg-preview-2"]}' --tag-specifications '{"ResourceType":"instance","Tags":[{"Key":"Name","Value":"nitro2"}]}' --metadata-options '{"HttpEndpoint":"enabled","HttpPutResponseHopLimit":2,"HttpTokens":"required"}' --private-dns-name-options '{"HostnameType":"ip-name","EnableResourceNameDnsARecord":true,"EnableResourceNameDnsAAAARecord":false}' --count "1" 
 
-ssh ec2-user@ec2-65-2-80-196.ap-south-1.compute.amazonaws.com
-# attempt 2: 15.207.221.31
+ssh ec2-user@verified-dev.daviddworken.com
 
 scp ~/code/teels-keys/id_ed25519.pub ec2-user@15.207.221.31:/home/ec2-user/.ssh/
 scp ~/code/teels-keys/id_ed25519 ec2-user@15.207.221.31:/home/ec2-user/.ssh/
 
+# On the machine:
 sudo yum install -y docker git go socat htop
 sudo service docker start
 sudo usermod -a -G docker ec2-user
@@ -173,21 +44,14 @@ sudo usermod -aG ne ec2-user
 git clone git@github.com:ddworken/teels.git
 git config --global user.name "David Dworken"
 git config --global user.email "david@daviddworken.com"
-sudo dd if=/dev/zero of=/swapfile bs=1M count=1024
-chmod 0600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
+curl https://hishtory.dev/install.py | python3 -
+
+#sudo dd if=/dev/zero of=/swapfile bs=1M count=1024
+#chmod 0600 /swapfile
+#sudo mkswap /swapfile
+#sudo swapon /swapfile
 
 # Logout and then log back in
 sudo nano /etc/nitro_enclaves/allocator.yaml # configure 1 CPU and memory limit 
 sudo systemctl enable --now nitro-enclaves-allocator.service
-
-cd teels
-rm *.eif
-docker build -t hello_world -f hello_world_demo/Dockerfile .
-nitro-cli build-enclave --docker-uri hello_world --output-file hello_world.eif
-
-nitro-cli run-enclave --eif-path hello_world.eif --memory 2000 --cpu-count 1 --enclave-cid 16 --debug-mode
-
-socat tcp-listen:8888,fork,reuseaddr vsock-connect:16:8888
  ```

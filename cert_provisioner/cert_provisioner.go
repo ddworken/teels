@@ -7,11 +7,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -19,9 +21,9 @@ import (
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/http01"
-	"github.com/go-acme/lego/v4/challenge/tlsalpn01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/registration"
+	"github.com/mdlayher/vsock"
 )
 
 // Config holds the configuration for the certificate provisioner
@@ -100,13 +102,41 @@ func parseTLSKeyType(keyType string) (certcrypto.KeyType, error) {
 	}
 }
 
+func createAwsNitroAttestation(data []byte) ([]byte, error) {
+	attestation := lib.AttestationReport{
+		UnverifiedAttestedData: data,
+		AwsNitroAttestation:    nil,
+	}
+
+	// Set the environment variable for user data
+	os.Setenv("NSM_USER_DATA", string(data))
+
+	// Run the nsm-cli binary and capture its output
+	cmd := exec.Command("./nsm-cli")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run nsm-cli: %w", err)
+	}
+
+	// The output is base64 encoded, so decode it
+	attestation.AwsNitroAttestation, err = base64.StdEncoding.DecodeString(string(output))
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode nsm-cli output: %w", err)
+	}
+
+	return saveAttestation(attestation)
+}
+
 func createFakeAttestation(data []byte) ([]byte, error) {
 	attestation := lib.AttestationReport{
 		UnverifiedAttestedData: data,
 		AwsNitroAttestation:    nil,
 	}
-	log.Printf("Attestation data: %x", attestation.UnverifiedAttestedData)
+	log.Printf("Fake attestation data: %x", attestation.UnverifiedAttestedData)
+	return saveAttestation(attestation)
+}
 
+func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 	jsonData, err := json.Marshal(attestation)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal attestation to JSON: %w", err)
