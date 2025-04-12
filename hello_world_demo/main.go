@@ -1,10 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -24,15 +26,40 @@ func customFileServer(root http.FileSystem) http.Handler {
 	})
 }
 
-func main() {
-	rootHandler := func(w http.ResponseWriter, req *http.Request) {
-		io.WriteString(w, "Hello World!")
+func rootHandler(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("rootHandler")
+
+	// Set content type to plain text
+	w.Header().Set("Content-Type", "text/plain")
+
+	// Walk through the /app directory
+	err := filepath.Walk("/app", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate indentation based on depth
+		relPath, _ := filepath.Rel("/app", path)
+		depth := strings.Count(relPath, string(filepath.Separator))
+		indent := strings.Repeat("  ", depth)
+
+		// Print file/directory name with appropriate prefix
+		if info.IsDir() {
+			io.WriteString(w, fmt.Sprintf("%s📁 %s/\n", indent, filepath.Base(path)))
+		} else {
+			io.WriteString(w, fmt.Sprintf("%s📄 %s\n", indent, filepath.Base(path)))
+		}
+		return nil
+	})
+
+	if err != nil {
+		io.WriteString(w, fmt.Sprintf("Error listing files: %v\n", err))
 	}
+}
+
+func main() {
 	formatterHandler := func(w http.ResponseWriter, req *http.Request) {
-		// if _, err := os.Stat("formatter.html"); os.IsNotExist(err) {
-		// 	http.Error(w, "Service Unavailable - formatter.html not found", http.StatusServiceUnavailable)
-		// 	return
-		// }
+		fmt.Println("formatterHandler")
 		http.ServeFile(w, req, "/app/formatter.html")
 	}
 

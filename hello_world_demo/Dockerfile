@@ -32,6 +32,21 @@ COPY hello_world_demo/static/ ./static/
 # Build the Go application
 RUN go build -o /enclave-server
 
+# Build stage for cert_provisioner
+FROM golang:1.23-alpine AS cert-provisioner-builder
+
+WORKDIR /app
+
+# Copy go.mod and go.sum first to leverage Docker cache
+COPY go.mod go.sum ./
+COPY vndr/ ./vndr/
+RUN go mod download
+
+# Copy and build cert_provisioner
+COPY cert_provisioner/cert_provisioner.go ./
+COPY lib/ ./lib/
+RUN go build -o /cert-provisioner
+
 # Final stage
 FROM alpine:latest
 
@@ -42,10 +57,17 @@ COPY --from=nsm-builder /app/nsm-cli/target/release/nsm-cli /app/
 COPY --from=go-builder /enclave-server /app/
 COPY --from=go-builder /app/formatter.html /app/
 COPY --from=go-builder /app/static/ /app/static/
+COPY --from=cert-provisioner-builder /cert-provisioner /app/
+RUN chmod +x /app/cert-provisioner && chmod +x /app/enclave-server
 
 # Set the working directory to /app
 WORKDIR /app
 
 EXPOSE 8888
 
-CMD [ "/app/enclave-server" ]
+ENV LETS_ENCRYPT_EMAIL_ADDRESS=david@daviddworken.com
+ENV VERIFIED_HOST_NAME=verified-dev.daviddworken.com
+
+CMD [ "/app/cert-provisioner"]
+# CMD [ "/app/cert-provisioner", "/app/enclave-server" ]
+# CMD [ "/app/enclave-server" ]

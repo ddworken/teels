@@ -16,14 +16,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ddworken/teels/lib"
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
-	"github.com/go-acme/lego/v4/challenge/http01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/registration"
-	"github.com/mdlayher/vsock"
 )
 
 // Config holds the configuration for the certificate provisioner
@@ -230,23 +229,24 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	legoConfig := lego.NewConfig(myUser)
 	legoConfig.CADirURL = config.TLSDirectoryURL
 	legoConfig.Certificate.KeyType = config.TLSKeyType
+	legoConfig.HTTPClient = "TODO"
 
 	client, err := lego.NewClient(legoConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ACME client: %w", err)
 	}
 
-	listener, err := vsock.Listen(80, nil)
-	if err != nil {
-		return nil, err
-	}
+	// listener, err := vsock.Listen(80, nil)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	http01Provider := http01.NewProviderServer("", "80")
-	http01Provider.SetListener(listener)
+	// http01Provider := http01.NewProviderServer("", "80")
+	// http01Provider.SetListener(listener)
 
-	if err := client.Challenge.SetHTTP01Provider(http01Provider); err != nil {
-		return nil, fmt.Errorf("failed to set HTTP01 provider: %w", err)
-	}
+	// if err := client.Challenge.SetHTTP01Provider(http01Provider); err != nil {
+	// 	return nil, fmt.Errorf("failed to set HTTP01 provider: %w", err)
+	// }
 
 	return client, nil
 }
@@ -266,7 +266,7 @@ func registerAccount(client *lego.Client, user *MyUser) error {
 }
 
 func saveArtifacts(certificates *certificate.Resource, accountKey *ecdsa.PrivateKey) error {
-	outputDir := "output-keys"
+	outputDir := "/app/output-keys"
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
@@ -297,28 +297,34 @@ func saveArtifacts(certificates *certificate.Resource, accountKey *ecdsa.Private
 	return nil
 }
 
+func sleepingLogFatalf(format string, args ...interface{}) {
+	log.Printf(format, args...)
+	time.Sleep(10 * time.Second)
+	log.Fatalf(format, args...)
+}
+
 func main() {
 	log.Println("Starting certificate provisioning process...")
 
 	config, err := loadConfig()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		sleepingLogFatalf("Failed to load configuration: %v", err)
 	}
 
 	accountKey, err := loadOrGenerateAccountKey()
 	if err != nil {
-		log.Fatalf("Failed to load/generate account key: %v", err)
+		sleepingLogFatalf("Failed to load/generate account key: %v", err)
 	}
 
-	certPrivateKey, certPublicKeyBytes, err := generateCertificateKey()
+	_, certPublicKeyBytes, err := generateCertificateKey()
 	if err != nil {
-		log.Fatalf("Failed to generate certificate key: %v", err)
+		sleepingLogFatalf("Failed to generate certificate key: %v", err)
 	}
 
 	certPublicKeyHash := sha256.Sum256(certPublicKeyBytes)
 	certAttestationReport, err := createFakeAttestation(certPublicKeyHash[:])
 	if err != nil {
-		log.Fatalf("Failed to generate attestation: %v", err)
+		sleepingLogFatalf("Failed to generate attestation: %v", err)
 	}
 
 	certAttestationHash := sha256.Sum256(certAttestationReport)
@@ -327,37 +333,49 @@ func main() {
 
 	certSubdomain := certEncodedAttestationHash + "." + config.HostName
 	certTargetDomains := []string{certSubdomain, config.HostName}
+	fmt.Printf("certTargetDomains: %v\n", certTargetDomains)
 
-	client, err := setupLegoClient(config, accountKey)
+	_, err = setupLegoClient(config, accountKey)
 	if err != nil {
-		log.Fatalf("Failed to setup Lego client: %v", err)
+		sleepingLogFatalf("Failed to setup Lego client: %v", err)
 	}
 
-	myUser := &MyUser{
-		Email: config.Email,
-		key:   accountKey,
-	}
+	// myUser := &MyUser{
+	// 	Email: config.Email,
+	// 	key:   accountKey,
+	// }
+	// fmt.Printf("myUser: %v\n", myUser)
 
-	if err := registerAccount(client, myUser); err != nil {
-		log.Fatalf("Failed to register account: %v", err)
-	}
+	// if err := registerAccount(client, myUser); err != nil {
+	// 	sleepingLogFatalf("Failed to register account: %v", err)
+	// }
 
-	request := certificate.ObtainRequest{
-		Domains:    certTargetDomains,
-		Bundle:     true,
-		PrivateKey: certPrivateKey,
-	}
+	// _ = certificate.ObtainRequest{
+	// 	Domains:    certTargetDomains,
+	// 	Bundle:     true,
+	// 	PrivateKey: certPrivateKey,
+	// }
 
-	certificates, err := client.Certificate.Obtain(request)
-	if err != nil {
-		log.Fatalf("Failed to obtain certificate: %v\nCheck network connectivity, port forwarding, and firewall rules.\nEnsure the domains %v correctly resolve to this machine's public IP.",
-			err, request.Domains)
-	}
+	// certificates, err := client.Certificate.Obtain(request)
+	// if err != nil {
+	// 	sleepingLogFatalf("Failed to obtain certificate: %v\nCheck network connectivity, port forwarding, and firewall rules.\nEnsure the domains %v correctly resolve to this machine's public IP.",
+	// 		err, request.Domains)
+	// }
 
-	if err := saveArtifacts(certificates, accountKey); err != nil {
-		log.Fatalf("Failed to save artifacts: %v", err)
-	}
+	// if err := saveArtifacts(certificates, accountKey); err != nil {
+	// 	sleepingLogFatalf("Failed to save artifacts: %v", err)
+	// }
 
-	log.Println("\n--- Process Complete ---")
-	log.Printf("Successfully obtained and saved certificate and related artifacts for: %v\n", certTargetDomains)
+	// log.Println("\n--- Process Complete ---")
+	// log.Printf("Successfully obtained and saved certificate and related artifacts for: %v\n", certTargetDomains)
+
+	// If command-line arguments are provided, execute them as a command
+	// if len(os.Args) > 1 {
+	cmd := exec.Command("/app/enclave-server")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		sleepingLogFatalf("Failed to execute command: %v", err)
+	}
+	// }
 }
