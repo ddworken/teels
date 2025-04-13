@@ -83,7 +83,7 @@ func loadConfig() (*Config, error) {
 	return &Config{
 		Email:           email,
 		HostName:        hostName,
-		TLSDirectoryURL: lego.LEDirectoryStaging, // Default to staging for safety
+		TLSDirectoryURL: lego.LEDirectoryProduction,
 		TLSKeyType:      keyType,
 		IsStaging:       true,
 	}, nil
@@ -148,7 +148,7 @@ func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 
 	hash := sha256.Sum256(jsonData)
 
-	outputDir := "output-attestations"
+	outputDir := "/app/static/output-attestations"
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
@@ -232,7 +232,7 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	}
 
 	// Add hosts entry if it doesn't exist
-	hostsEntry := "127.0.0.1 acme-staging-v02.api.letsencrypt.org"
+	hostsEntry := "127.0.0.1 acme-staging-v02.api.letsencrypt.org\n127.0.0.1 acme-v02.api.letsencrypt.org"
 	hostsContent, err := os.ReadFile("/etc/hosts")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read /etc/hosts: %w", err)
@@ -257,7 +257,7 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	legoConfig.CADirURL = config.TLSDirectoryURL
 	legoConfig.Certificate.KeyType = config.TLSKeyType
 
-	// Test the connection to Let's Encrypt staging API
+	// Test the connection to Let's Encrypt API (ensures that our TCP proxy is working)
 	resp, err := legoConfig.HTTPClient.Get(config.TLSDirectoryURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Let's Encrypt staging API: %w", err)
@@ -273,7 +273,7 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 		return nil, fmt.Errorf("failed to create ACME client: %w", err)
 	}
 
-	// Configure the HTTP-01 provider to listen on vsock
+	// Configure the HTTP-01 provider to listen on the vsock
 	http01Provider := http01.NewProviderServer("", "80")
 	http01Provider.SetListenerCreator(func() (net.Listener, error) {
 		return vsock.Listen(80, nil)
@@ -331,12 +331,8 @@ func saveArtifacts(certificates *certificate.Resource, accountKey *ecdsa.Private
 	return nil
 }
 
-func sleepingLogFatalf(format string, args ...interface{}) {
-	if closeListener != nil {
-		closeListener()
-	}
+func fatalLogAndStartAppServer(format string, args ...interface{}) {
 	log.Printf(format, args...)
-	// time.Sleep(30 * time.Second)
 
 	cmd := exec.Command("/app/enclave-server")
 	cmd.Stdout = os.Stdout
@@ -344,9 +340,6 @@ func sleepingLogFatalf(format string, args ...interface{}) {
 	if err := cmd.Run(); err != nil {
 		log.Fatalf("Failed to execute command: %v", err)
 	}
-
-	// time.Sleep(10 * time.Second)
-	// log.Fatalf(format, args...)
 }
 
 func runSocatCommand(stdoutFile, stderrFile *os.File, args ...string) error {
@@ -376,13 +369,14 @@ func runSocatCommand(stdoutFile, stderrFile *os.File, args ...string) error {
 	}
 }
 
+// Starts a background TCP proxy to listen on port 443 and forward to the vsock-connect:2:8002.
+// This enables us to reach the Let's Encrypt API for cert provisioning.
 func startBackgroundTcpProxy() error {
 	// Configure loopback interface and routing
 	cmd := exec.Command("ifconfig", "lo", "127.0.0.1")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to configure loopback interface: %w", err)
 	}
-
 	cmd = exec.Command("ip", "route", "add", "default", "dev", "lo", "src", "127.0.0.1")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to add default route: %w", err)
@@ -390,26 +384,13 @@ func startBackgroundTcpProxy() error {
 
 	// Bring up the loopback interface and create a virtual interface
 	cmd = exec.Command("ip", "link", "set", "lo", "up")
-	cmd.Run() // Ignore errors for this command
+	cmd.Run() // Ignore errors for this command since it fails if the interface is already up
 	cmd = exec.Command("ip", "link", "set", "dev", "lo:0", "up")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to bring up lo:0 interface: %w", err)
 	}
 
-	// Create stdout and stderr files
-	stdoutFile, err := os.OpenFile("/app/static/proxy_stdout.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create stdout file: %w", err)
-	}
-	// defer stdoutFile.Close()
-
-	stderrFile, err := os.OpenFile("/app/static/proxy_stderr.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to create stderr file: %w", err)
-	}
-	// defer stderrFile.Close()
-
-	return runSocatCommand(stdoutFile, stderrFile, "-v", "-v", "tcp-listen:443,bind=127.0.0.1,fork,reuseaddr", "vsock-connect:2:8002")
+	return runSocatCommand(os.Stdout, os.Stderr, "-v", "-v", "tcp-listen:443,bind=127.0.0.1,fork,reuseaddr", "vsock-connect:2:8002")
 }
 
 func setupDualLogger() (*os.File, error) {
@@ -429,10 +410,7 @@ func setupDualLogger() (*os.File, error) {
 	return logFile, nil
 }
 
-var closeListener func()
-
 func main() {
-	// Set up dual logging
 	logFile, err := setupDualLogger()
 	if err != nil {
 		log.Fatalf("Failed to set up logging: %v", err)
@@ -445,28 +423,28 @@ func main() {
 
 	err = startBackgroundTcpProxy()
 	if err != nil {
-		sleepingLogFatalf("Failed to start background TCP proxy: %v", err)
+		fatalLogAndStartAppServer("Failed to start background TCP proxy: %v", err)
 	}
 
 	config, err := loadConfig()
 	if err != nil {
-		sleepingLogFatalf("Failed to load configuration: %v", err)
+		fatalLogAndStartAppServer("Failed to load configuration: %v", err)
 	}
 
 	accountKey, err := loadOrGenerateAccountKey()
 	if err != nil {
-		sleepingLogFatalf("Failed to load/generate account key: %v", err)
+		fatalLogAndStartAppServer("Failed to load/generate account key: %v", err)
 	}
 
 	certPrivateKey, certPublicKeyBytes, err := generateCertificateKey()
 	if err != nil {
-		sleepingLogFatalf("Failed to generate certificate key: %v", err)
+		fatalLogAndStartAppServer("Failed to generate certificate key: %v", err)
 	}
 
 	certPublicKeyHash := sha256.Sum256(certPublicKeyBytes)
 	certAttestationReport, err := createFakeAttestation(certPublicKeyHash[:])
 	if err != nil {
-		sleepingLogFatalf("Failed to generate attestation: %v", err)
+		fatalLogAndStartAppServer("Failed to generate attestation: %v", err)
 	}
 
 	certAttestationHash := sha256.Sum256(certAttestationReport)
@@ -474,23 +452,21 @@ func main() {
 	certEncodedAttestationHash := strings.ToLower(certBase32Encoder.EncodeToString(certAttestationHash[:]))
 
 	certSubdomain := certEncodedAttestationHash + "." + config.HostName
-	fmt.Printf("certSubdomain: %v\n", certSubdomain)
 	certTargetDomains := []string{config.HostName, certSubdomain}
 	fmt.Printf("certTargetDomains: %v\n", certTargetDomains)
 
 	client, err := setupLegoClient(config, accountKey)
 	if err != nil {
-		sleepingLogFatalf("Failed to setup Lego client: %v", err)
+		fatalLogAndStartAppServer("Failed to setup Lego client: %v", err)
 	}
 
 	myUser := &MyUser{
 		Email: config.Email,
 		key:   accountKey,
 	}
-	fmt.Printf("myUser: %v\n", myUser)
 
 	if err := registerAccount(client, myUser); err != nil {
-		sleepingLogFatalf("Failed to register account: %v", err)
+		fatalLogAndStartAppServer("Failed to register account: %v", err)
 	}
 
 	request := certificate.ObtainRequest{
@@ -501,27 +477,21 @@ func main() {
 
 	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
-		sleepingLogFatalf("Failed to obtain certificate: %v\nCheck network connectivity, port forwarding, and firewall rules.\nEnsure the domains %v correctly resolve to this machine's public IP.",
+		fatalLogAndStartAppServer("Failed to obtain certificate: %v\nCheck network connectivity, port forwarding, and firewall rules.\nEnsure the domains %v correctly resolve to this machine's public IP.",
 			err, request.Domains)
 	}
 
 	if err := saveArtifacts(certificates, accountKey); err != nil {
-		sleepingLogFatalf("Failed to save artifacts: %v", err)
+		fatalLogAndStartAppServer("Failed to save artifacts: %v", err)
 	}
 
 	log.Println("\n--- Process Complete ---")
 	log.Printf("Successfully obtained and saved certificate and related artifacts for: %v\n", certTargetDomains)
-
-	// If command-line arguments are provided, execute them as a command
-	// if len(os.Args) > 1 {
-	if closeListener != nil {
-		closeListener()
-	}
+	log.Printf("Starting application server...")
 	cmd := exec.Command("/app/enclave-server")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		sleepingLogFatalf("Failed to execute command: %v", err)
+		fatalLogAndStartAppServer("Failed to execute command: %v", err)
 	}
-	// }
 }
