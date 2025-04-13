@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -274,15 +275,20 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	}
 
 	// Configure the HTTP-01 provider to listen on vsock
-	listener80, err := vsock.Listen(80, nil)
-	// listener80, err := net.Listen("tcp", ":80")
-	if err != nil {
-		return nil, nil, err
-	}
+	// listener80, err := vsock.Listen(80, nil)
+	// // listener80, err := net.Listen("tcp", ":80")
+	// if err != nil {
+	// 	return nil, nil, err
+	// }
+	listener80Close := func() error { return nil }
 	http01Provider := http01.NewProviderServer("", "80")
-	http01Provider.SetListener(listener80)
+	http01Provider.SetListenerCreator(func() (net.Listener, error) {
+		l, err := vsock.Listen(80, nil)
+		listener80Close = func() error { return l.Close() }
+		return l, err
+	})
 	if err := client.Challenge.SetHTTP01Provider(http01Provider); err != nil {
-		return nil, listener80.Close, fmt.Errorf("failed to set HTTP-01 provider: %w", err)
+		return nil, listener80Close, fmt.Errorf("failed to set HTTP-01 provider: %w", err)
 	}
 
 	// Configure the TLS-ALPN-01 provider to listen on vsock
@@ -291,7 +297,7 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 		return nil, nil, err
 	}
 	closeBothListeners := func() error {
-		err1 := listener80.Close()
+		err1 := listener80Close()
 		err2 := listener443.Close()
 		if err1 != nil {
 			return err1
@@ -370,6 +376,7 @@ func sleepingLogFatalf(format string, args ...interface{}) {
 		closeListener()
 	}
 	log.Printf(format, args...)
+	// time.Sleep(30 * time.Second)
 
 	cmd := exec.Command("/app/enclave-server")
 	cmd.Stdout = os.Stdout
@@ -513,7 +520,8 @@ func main() {
 	certEncodedAttestationHash := strings.ToLower(certBase32Encoder.EncodeToString(certAttestationHash[:]))
 
 	certSubdomain := certEncodedAttestationHash + "." + config.HostName
-	certTargetDomains := []string{certSubdomain, config.HostName}
+	fmt.Printf("certSubdomain: %v\n", certSubdomain)
+	certTargetDomains := []string{config.HostName, certSubdomain}
 	fmt.Printf("certTargetDomains: %v\n", certTargetDomains)
 
 	client, closer, err := setupLegoClient(config, accountKey)
@@ -547,18 +555,18 @@ func main() {
 		PrivateKey: certPrivateKey,
 	}
 
-	_, err = client.Certificate.Obtain(request)
+	certificates, err := client.Certificate.Obtain(request)
 	if err != nil {
 		sleepingLogFatalf("Failed to obtain certificate: %v\nCheck network connectivity, port forwarding, and firewall rules.\nEnsure the domains %v correctly resolve to this machine's public IP.",
 			err, request.Domains)
 	}
 
-	// if err := saveArtifacts(certificates, accountKey); err != nil {
-	// 	sleepingLogFatalf("Failed to save artifacts: %v", err)
-	// }
+	if err := saveArtifacts(certificates, accountKey); err != nil {
+		sleepingLogFatalf("Failed to save artifacts: %v", err)
+	}
 
-	// log.Println("\n--- Process Complete ---")
-	// log.Printf("Successfully obtained and saved certificate and related artifacts for: %v\n", certTargetDomains)
+	log.Println("\n--- Process Complete ---")
+	log.Printf("Successfully obtained and saved certificate and related artifacts for: %v\n", certTargetDomains)
 
 	// If command-line arguments are provided, execute them as a command
 	// if len(os.Args) > 1 {

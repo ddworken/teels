@@ -21,9 +21,10 @@ type ProviderServer struct {
 
 	socketMode fs.FileMode
 
-	matcher  domainMatcher
-	done     chan bool
-	listener net.Listener
+	matcher         domainMatcher
+	done            chan bool
+	listener        net.Listener
+	listenerCreator func() (net.Listener, error)
 }
 
 // NewProviderServer creates a new ProviderServer on the selected interface and port.
@@ -41,15 +42,20 @@ func NewUnixProviderServer(socketPath string, mode fs.FileMode) *ProviderServer 
 	return &ProviderServer{network: "unix", address: socketPath, socketMode: mode, matcher: &hostMatcher{}}
 }
 
-func (s *ProviderServer) SetListener(listener net.Listener) {
-	s.listener = listener
+func (s *ProviderServer) SetListenerCreator(listenerCreator func() (net.Listener, error)) {
+	s.listenerCreator = listenerCreator
 }
 
 // Present starts a web server and makes the token available at `ChallengePath(token)` for web requests.
 func (s *ProviderServer) Present(domain, token, keyAuth string) error {
 	var err error
-	if s.listener == nil {
-	s.listener, err = net.Listen(s.network, s.GetAddress())
+	if s.listenerCreator == nil {
+		s.listener, err = net.Listen(s.network, s.GetAddress())
+		if err != nil {
+			return fmt.Errorf("could not start HTTP server for challenge: %w", err)
+		}
+	} else {
+		s.listener, err = s.listenerCreator()
 		if err != nil {
 			return fmt.Errorf("could not start HTTP server for challenge: %w", err)
 		}
@@ -74,6 +80,7 @@ func (s *ProviderServer) GetAddress() string {
 
 // CleanUp closes the HTTP server and removes the token from `ChallengePath(token)`.
 func (s *ProviderServer) CleanUp(domain, token, keyAuth string) error {
+	log.Infof("Cleaning up HTTP-01 challenge for domain %s", domain)
 	if s.listener == nil {
 		return nil
 	}
