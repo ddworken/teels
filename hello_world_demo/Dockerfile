@@ -14,22 +14,6 @@ COPY nsm-cli/ ./nsm-cli/
 WORKDIR /app/nsm-cli
 RUN source $HOME/.cargo/env && cargo build --release
 
-# Build stage for enclave-proxy
-FROM golang:1.23-alpine AS enclave-proxy-builder
-
-# Install Rust, Cargo, and build dependencies
-RUN apk add --no-cache rustup build-base
-RUN rustup-init -y --default-toolchain stable && \
-    source $HOME/.cargo/env && \
-    rustup default stable
-
-WORKDIR /app
-
-# Copy and build vsock-tcp-proxy
-COPY vsock-tcp-proxy/ ./vsock-tcp-proxy/
-WORKDIR /app/vsock-tcp-proxy
-RUN source $HOME/.cargo/env && cargo build --release --bin enclave-proxy
-
 # Build stage for Go application
 FROM golang:1.23-alpine AS go-builder
 
@@ -74,12 +58,11 @@ RUN apk add --no-cache socat
 
 # Copy only the necessary binaries and static files from previous stages
 COPY --from=nsm-builder /app/nsm-cli/target/release/nsm-cli /app/
-COPY --from=enclave-proxy-builder /app/vsock-tcp-proxy/target/release/enclave-proxy /app/
 COPY --from=go-builder /enclave-server /app/
 COPY --from=go-builder /app/formatter.html /app/
 COPY --from=go-builder /app/static/ /app/static/
 COPY --from=cert-provisioner-builder /cert-provisioner /app/
-RUN chmod +x /app/cert-provisioner && chmod +x /app/enclave-server && chmod +x /app/enclave-proxy
+RUN chmod +x /app/cert-provisioner && chmod +x /app/enclave-server
 
 # Set the working directory to /app
 WORKDIR /app
