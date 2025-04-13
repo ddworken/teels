@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -83,7 +82,7 @@ func loadConfig() (*Config, error) {
 	return &Config{
 		Email:           email,
 		HostName:        hostName,
-		TLSDirectoryURL: lego.LEDirectoryProduction,
+		TLSDirectoryURL: lego.LEDirectoryStaging,
 		TLSKeyType:      keyType,
 		IsStaging:       true,
 	}, nil
@@ -116,17 +115,14 @@ func createAwsNitroAttestation(data []byte) ([]byte, error) {
 	os.Setenv("NSM_USER_DATA", string(data))
 
 	// Run the nsm-cli binary and capture its output
-	cmd := exec.Command("./nsm-cli")
+	cmd := exec.Command("/app/nsm-cli")
 	output, err := cmd.Output()
+	log.Printf("nsm-cli output: %#v", output)
 	if err != nil {
+		log.Printf("nsm-cli error: %#v", err)
 		return nil, fmt.Errorf("failed to run nsm-cli: %w", err)
 	}
-
-	// The output is base64 encoded, so decode it
-	attestation.AwsNitroAttestation, err = base64.StdEncoding.DecodeString(string(output))
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode nsm-cli output: %w", err)
-	}
+	attestation.AwsNitroAttestation = output
 
 	return saveAttestation(attestation)
 }
@@ -442,7 +438,8 @@ func main() {
 	}
 
 	certPublicKeyHash := sha256.Sum256(certPublicKeyBytes)
-	certAttestationReport, err := createFakeAttestation(certPublicKeyHash[:])
+	// certAttestationReport, err := createFakeAttestation(certPublicKeyHash[:])
+	certAttestationReport, err := createAwsNitroAttestation(certPublicKeyHash[:])
 	if err != nil {
 		fatalLogAndStartAppServer("Failed to generate attestation: %v", err)
 	}
