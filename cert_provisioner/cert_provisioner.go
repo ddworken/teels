@@ -25,7 +25,6 @@ import (
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/http01"
-	"github.com/go-acme/lego/v4/challenge/tlsalpn01"
 	"github.com/go-acme/lego/v4/lego"
 	"github.com/go-acme/lego/v4/registration"
 	"github.com/mdlayher/vsock"
@@ -226,7 +225,7 @@ func generateCertificateKey() (*ecdsa.PrivateKey, []byte, error) {
 	return certPrivateKey, certPublicKeyBytes, nil
 }
 
-func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client, func() error, error) {
+func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client, error) {
 	myUser := &MyUser{
 		Email: config.Email,
 		key:   accountKey,
@@ -236,20 +235,20 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	hostsEntry := "127.0.0.1 acme-staging-v02.api.letsencrypt.org"
 	hostsContent, err := os.ReadFile("/etc/hosts")
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read /etc/hosts: %w", err)
+		return nil, fmt.Errorf("failed to read /etc/hosts: %w", err)
 	}
 
 	if !strings.Contains(string(hostsContent), hostsEntry) {
 		// Open file in append mode
 		hostsFile, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to open /etc/hosts for writing: %w", err)
+			return nil, fmt.Errorf("failed to open /etc/hosts for writing: %w", err)
 		}
 		defer hostsFile.Close()
 
 		// Add the new entry
 		if _, err := hostsFile.WriteString("\n" + hostsEntry + "\n"); err != nil {
-			return nil, nil, fmt.Errorf("failed to write to /etc/hosts: %w", err)
+			return nil, fmt.Errorf("failed to write to /etc/hosts: %w", err)
 		}
 		log.Println("Added Let's Encrypt staging API entry to /etc/hosts")
 	}
@@ -261,68 +260,29 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	// Test the connection to Let's Encrypt staging API
 	resp, err := legoConfig.HTTPClient.Get(config.TLSDirectoryURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to connect to Let's Encrypt staging API: %w", err)
+		return nil, fmt.Errorf("failed to connect to Let's Encrypt staging API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("let's encrypt API returned non-200 status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("let's encrypt API returned non-200 status code: %d", resp.StatusCode)
 	}
 
 	client, err := lego.NewClient(legoConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create ACME client: %w", err)
+		return nil, fmt.Errorf("failed to create ACME client: %w", err)
 	}
 
 	// Configure the HTTP-01 provider to listen on vsock
-	// listener80, err := vsock.Listen(80, nil)
-	// // listener80, err := net.Listen("tcp", ":80")
-	// if err != nil {
-	// 	return nil, nil, err
-	// }
-	listener80Close := func() error { return nil }
 	http01Provider := http01.NewProviderServer("", "80")
 	http01Provider.SetListenerCreator(func() (net.Listener, error) {
-		l, err := vsock.Listen(80, nil)
-		listener80Close = func() error { return l.Close() }
-		return l, err
+		return vsock.Listen(80, nil)
 	})
 	if err := client.Challenge.SetHTTP01Provider(http01Provider); err != nil {
-		return nil, listener80Close, fmt.Errorf("failed to set HTTP-01 provider: %w", err)
+		return nil, fmt.Errorf("failed to set HTTP-01 provider: %w", err)
 	}
 
-	// Configure the TLS-ALPN-01 provider to listen on vsock
-	listener443, err := vsock.Listen(443, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	closeBothListeners := func() error {
-		err1 := listener80Close()
-		err2 := listener443.Close()
-		if err1 != nil {
-			return err1
-		}
-		if err2 != nil {
-			return err
-		}
-		cmd := exec.Command("killall", "socat")
-		if err := cmd.Run(); err != nil {
-			// Ignore error if no socat processes are running
-			if !strings.Contains(err.Error(), "no process found") {
-				return fmt.Errorf("failed to kill socat processes: %w", err)
-			}
-		}
-		return nil
-	}
-	tls01Provider := tlsalpn01.NewProviderServer("", "443")
-	tls01Provider.SetListener(listener443)
-	// if err := client.Challenge.SetTLSALPN01Provider(tls01Provider); err != nil {
-	// 	return nil, closeBothListeners, fmt.Errorf("failed to set TLS-ALPN-01 provider: %w", err)
-	// }
-
-	time.Sleep(1 * time.Second)
-
-	return client, closeBothListeners, nil
+	return client, nil
 }
 
 func registerAccount(client *lego.Client, user *MyUser) error {
@@ -449,13 +409,7 @@ func startBackgroundTcpProxy() error {
 	}
 	// defer stderrFile.Close()
 
-	// Start the proxy with redirected output
-	err = runSocatCommand(stdoutFile, stderrFile, "-v", "-v", "tcp-listen:443,bind=127.0.0.1,fork,reuseaddr", "vsock-connect:2:8002")
-	if err != nil {
-		return fmt.Errorf("failed to start socat command: %w", err)
-	}
-	return nil
-	// return runSocatCommand(stdoutFile, stderrFile, "-v", "-v", "vsock-listen:80,fork,reuseaddr", "tcp-connect:127.0.0.1:80")
+	return runSocatCommand(stdoutFile, stderrFile, "-v", "-v", "tcp-listen:443,bind=127.0.0.1,fork,reuseaddr", "vsock-connect:2:8002")
 }
 
 func setupDualLogger() (*os.File, error) {
@@ -524,17 +478,7 @@ func main() {
 	certTargetDomains := []string{config.HostName, certSubdomain}
 	fmt.Printf("certTargetDomains: %v\n", certTargetDomains)
 
-	client, closer, err := setupLegoClient(config, accountKey)
-	if closer != nil {
-		closeListener = func() {
-			if err := closer(); err != nil {
-				sleepingLogFatalf("Failed to close vsock listener: %v", err)
-			}
-			log.Println("Closed vsock listener")
-			time.Sleep(1 * time.Second)
-		}
-		defer closeListener()
-	}
+	client, err := setupLegoClient(config, accountKey)
 	if err != nil {
 		sleepingLogFatalf("Failed to setup Lego client: %v", err)
 	}
