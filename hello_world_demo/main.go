@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -72,18 +73,58 @@ func main() {
 	fs := customFileServer(http.Dir(filepath.Join("/app/", "static")))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
-	var listener net.Listener
-	listener, err := net.Listen("tcp", ":80")
-	if err != nil {
-		log.Fatal(err)
-	}
+	// Start HTTP server
+	go func() {
+		var httpListener net.Listener
+		var err error
 
-	if runtime.GOOS == "linux" {
-		listener, err = vsock.Listen(80, nil)
-		if err != nil {
-			log.Fatal(err)
+		if runtime.GOOS == "linux" {
+			httpListener, err = vsock.Listen(80, nil)
+		} else {
+			httpListener, err = net.Listen("tcp", ":80")
 		}
-	}
 
-	log.Fatal(http.Serve(listener, mux))
+		if err != nil {
+			log.Fatal("HTTP server error:", err)
+		}
+		log.Println("HTTP server listening on port 80")
+		log.Fatal(http.Serve(httpListener, mux))
+	}()
+
+	// Start HTTPS server
+	go func() {
+		// Load TLS certificates
+		cert, err := tls.LoadX509KeyPair(
+			"/app/output-keys/certificate.crt",
+			"/app/output-keys/certificate_key.pem",
+		)
+		if err != nil {
+			log.Fatal("Failed to load TLS certificates:", err)
+		}
+
+		// Configure TLS
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}
+
+		var httpsListener net.Listener
+		if runtime.GOOS == "linux" {
+			httpsListener, err = vsock.Listen(443, nil)
+		} else {
+			httpsListener, err = net.Listen("tcp", ":443")
+		}
+
+		if err != nil {
+			log.Fatal("HTTPS server error:", err)
+		}
+
+		// Wrap the listener with TLS
+		tlsListener := tls.NewListener(httpsListener, tlsConfig)
+
+		log.Println("HTTPS server listening on port 443")
+		log.Fatal(http.Serve(tlsListener, mux))
+	}()
+
+	// Keep the main goroutine running
+	select {}
 }
