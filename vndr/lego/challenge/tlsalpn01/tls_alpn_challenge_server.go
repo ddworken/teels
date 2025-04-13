@@ -40,6 +40,10 @@ func (s *ProviderServer) GetAddress() string {
 	return net.JoinHostPort(s.iface, s.port)
 }
 
+func (s *ProviderServer) SetListener(listener net.Listener) {
+	s.listener = listener
+}
+
 // Present generates a certificate with an SHA-256 digest of the keyAuth provided
 // as the acmeValidation-v1 extension value to conform to the ACME-TLS-ALPN spec.
 func (s *ProviderServer) Present(domain, token, keyAuth string) error {
@@ -65,9 +69,11 @@ func (s *ProviderServer) Present(domain, token, keyAuth string) error {
 	tlsConf.NextProtos = []string{ACMETLS1Protocol}
 
 	// Create the listener with the created tls.Config.
-	s.listener, err = tls.Listen("tcp", s.GetAddress(), tlsConf)
-	if err != nil {
-		return fmt.Errorf("could not start HTTPS server for challenge: %w", err)
+	if s.listener == nil {
+		s.listener, err = tls.Listen("tcp", s.GetAddress(), tlsConf)
+		if err != nil {
+			return fmt.Errorf("could not start HTTPS server for challenge: %w", err)
+		}
 	}
 
 	// Shut the server down when we're finished.

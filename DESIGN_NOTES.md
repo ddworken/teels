@@ -36,7 +36,7 @@ scp ~/code/teels-keys/id_ed25519.pub ec2-user@15.207.221.31:/home/ec2-user/.ssh/
 scp ~/code/teels-keys/id_ed25519 ec2-user@15.207.221.31:/home/ec2-user/.ssh/
 
 # On the machine:
-sudo yum install -y docker git go socat htop
+sudo yum install -y docker git go socat htop rust cargo
 sudo service docker start
 sudo usermod -a -G docker ec2-user
 sudo dnf install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel -y
