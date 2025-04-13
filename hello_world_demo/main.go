@@ -58,12 +58,20 @@ func rootHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func main() {
-	formatterHandler := func(w http.ResponseWriter, req *http.Request) {
-		fmt.Println("formatterHandler")
-		http.ServeFile(w, req, "/app/formatter.html")
+func formatterHandler(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("formatterHandler")
+
+	// Check if the request is HTTP and redirect to HTTPS if needed
+	if req.TLS == nil && req.Header.Get("X-Forwarded-Proto") != "https" {
+		httpsURL := "https://" + req.Host + req.URL.Path
+		http.Redirect(w, req, httpsURL, http.StatusMovedPermanently)
+		return
 	}
 
+	http.ServeFile(w, req, "/app/formatter.html")
+}
+
+func main() {
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", rootHandler)
