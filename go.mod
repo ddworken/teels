@@ -12,6 +12,8 @@ require (
 )
 
 replace github.com/go-acme/lego/v4 v4.22.2 => ./vndr/lego
+replace github.com/veracruz-project/go-nitro-enclave-attestation-document v0.0.0-20230315135749-6fc97d770084 => ./vndr/go-nitro-enclave-attestation-document
+replace crypto/x509 => ./vndr/x509
 
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
