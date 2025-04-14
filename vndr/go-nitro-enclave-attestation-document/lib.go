@@ -30,18 +30,18 @@ type AttestationDocument struct {
 	Certificate []byte
 	CABundle    [][]byte
 	PublicKey   []byte
-	User_Data    []byte // This non-standard format for this variable is required. Don't change it
+	User_Data   []byte // This non-standard format for this variable is required. Don't change it
 	Nonce       []byte
 }
 
-/// Authenticate an AWS Nitro Enclave attestation document with the provided root certificate.
-/// If authentication passes, return the generated AttestationDocument representing the fields
-/// from the provided CBOR data
-/// data - the document data to be authenticated
-/// root_certificate - the root certificate to be used to authenticate the document
-/// add_prefix - The AWS implementation of COSE (and the Rust implementation) excludes a prefix
-///  to the document that the golang implementation expects. Setting this parameter to true will
-///  assume the prefix is not there and adds it. Otherwise, the `data` input is left as-is.
+// / Authenticate an AWS Nitro Enclave attestation document with the provided root certificate.
+// / If authentication passes, return the generated AttestationDocument representing the fields
+// / from the provided CBOR data
+// / data - the document data to be authenticated
+// / root_certificate - the root certificate to be used to authenticate the document
+// / add_prefix - The AWS implementation of COSE (and the Rust implementation) excludes a prefix
+// /  to the document that the golang implementation expects. Setting this parameter to true will
+// /  assume the prefix is not there and adds it. Otherwise, the `data` input is left as-is.
 func AuthenticateDocument(data []byte, root_certificate x509.Certificate, add_prefix bool) (*AttestationDocument, error) {
 	// Following the steps here: https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
 	// Step 1. Decode the CBOR object and map it to a COSE_Sign1 structure
@@ -102,9 +102,9 @@ func AuthenticateDocument(data []byte, root_certificate x509.Certificate, add_pr
 	return document, nil
 }
 
-/// Generate CBOR for a fake AWS Nitro Enclave attestation document, signed by the provided key, with the `signingCertDer` embedded in the `Certificate` field and the
-/// `caBundle` embedded as the `CABundle` field.
-/// This interface is useful for testing. Beyond that, there should be no reason for you to generate your own attestation document
+// / Generate CBOR for a fake AWS Nitro Enclave attestation document, signed by the provided key, with the `signingCertDer` embedded in the `Certificate` field and the
+// / `caBundle` embedded as the `CABundle` field.
+// / This interface is useful for testing. Beyond that, there should be no reason for you to generate your own attestation document
 func GenerateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, signingCertDer []byte, caBundle [][]byte, signingKey *ecdsa.PrivateKey) ([]byte, error) {
 	document := AttestationDocument{
 		ModuleId:    "MyId",
@@ -114,7 +114,7 @@ func GenerateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, sign
 		Certificate: signingCertDer,
 		CABundle:    caBundle,
 		PublicKey:   []byte{},
-		User_Data:    userData,
+		User_Data:   userData,
 		Nonce:       nonce,
 	}
 	payload, err := cbor.Marshal(document)
