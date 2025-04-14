@@ -111,11 +111,9 @@ func createAwsNitroAttestation(data []byte) ([]byte, error) {
 		AwsNitroAttestation:    nil,
 	}
 
-	// Set the environment variable for user data
-	os.Setenv("NSM_USER_DATA", string(data))
-
 	// Run the nsm-cli binary and capture its output
 	cmd := exec.Command("/app/nsm-cli")
+	cmd.Env = append(cmd.Env, "NSM_USER_DATA="+lib.Base32Encoder.EncodeToString(data))
 	output, err := cmd.Output()
 	log.Printf("nsm-cli output: %#v", output)
 	if err != nil {
@@ -445,8 +443,7 @@ func main() {
 	}
 
 	certAttestationHash := sha256.Sum256(certAttestationReport)
-	certBase32Encoder := lib.Base32Encoder
-	certEncodedAttestationHash := strings.ToLower(certBase32Encoder.EncodeToString(certAttestationHash[:]))
+	certEncodedAttestationHash := strings.ToLower(lib.Base32Encoder.EncodeToString(certAttestationHash[:]))
 
 	certSubdomain := certEncodedAttestationHash + "." + config.HostName
 	certTargetDomains := []string{config.HostName, certSubdomain}
