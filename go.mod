@@ -12,8 +12,8 @@ require (
 )
 
 replace github.com/go-acme/lego/v4 v4.22.2 => ./vndr/lego
+
 replace github.com/veracruz-project/go-nitro-enclave-attestation-document v0.0.0-20230315135749-6fc97d770084 => ./vndr/go-nitro-enclave-attestation-document
-replace crypto/x509 => ./vndr/x509
 
 require (
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.6.10 // indirect
@@ -41,7 +41,9 @@ require (
 	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/miekg/dns v1.1.64 // indirect
 	github.com/veraison/go-cose v1.0.0-rc.1 // indirect
+	github.com/weppos/publicsuffix-go v0.40.3-0.20250311103038-7794c8c0723b // indirect
 	github.com/x448/float16 v0.8.4 // indirect
+	github.com/zmap/zcrypto v0.0.0-20250324021606-4f0ea0eaccac // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/mod v0.23.0 // indirect

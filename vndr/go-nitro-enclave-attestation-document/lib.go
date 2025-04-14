@@ -20,6 +20,7 @@ import (
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/veraison/go-cose"
+	zcrypto_x509 "github.com/zmap/zcrypto/ct/x509"
 )
 
 type AttestationDocument struct {
@@ -42,7 +43,7 @@ type AttestationDocument struct {
 // / add_prefix - The AWS implementation of COSE (and the Rust implementation) excludes a prefix
 // /  to the document that the golang implementation expects. Setting this parameter to true will
 // /  assume the prefix is not there and adds it. Otherwise, the `data` input is left as-is.
-func AuthenticateDocument(data []byte, root_certificate x509.Certificate, add_prefix bool) (*AttestationDocument, error) {
+func AuthenticateDocument(data []byte, root_certificate interface{}, add_prefix bool) (*AttestationDocument, error) {
 	// Following the steps here: https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
 	// Step 1. Decode the CBOR object and map it to a COSE_Sign1 structure
 	var msg cose.Sign1Message
@@ -62,27 +63,50 @@ func AuthenticateDocument(data []byte, root_certificate x509.Certificate, add_pr
 		return nil, fmt.Errorf("AuthenticateDocument:parsePayload failed:%v", err)
 	}
 	// Step 3. Verify the certificate's chain
-	intermediates_pool := x509.NewCertPool()
+	intermediates_pool := zcrypto_x509.NewCertPool()
 	for _, this_cert_der := range document.CABundle {
-		this_cert, err := x509.ParseCertificate(this_cert_der)
+		this_cert, err := zcrypto_x509.ParseCertificate(this_cert_der)
 		if err != nil {
 			return nil, fmt.Errorf("AuthenticateDocument:ParseCertificate failed:%v", err)
 		}
 		intermediates_pool.AddCert(this_cert)
 	}
-	root_pool := x509.NewCertPool()
-	root_pool.AddCert(&root_certificate)
+	root_pool := zcrypto_x509.NewCertPool()
 
-	end_user_cert, err := x509.ParseCertificate(document.Certificate)
+	// Convert the root certificate to zcrypto's x509.Certificate if needed
+	var zcryptoCert *zcrypto_x509.Certificate
+	switch cert := root_certificate.(type) {
+	case *zcrypto_x509.Certificate:
+		zcryptoCert = cert
+	case zcrypto_x509.Certificate:
+		zcryptoCert = &cert
+	case *x509.Certificate:
+		// Convert standard library certificate to zcrypto certificate
+		zcryptoCert, err = zcrypto_x509.ParseCertificate(cert.Raw)
+		if err != nil {
+			return nil, fmt.Errorf("AuthenticateDocument:Failed to convert root certificate:%v", err)
+		}
+	case x509.Certificate:
+		// Convert standard library certificate to zcrypto certificate
+		zcryptoCert, err = zcrypto_x509.ParseCertificate(cert.Raw)
+		if err != nil {
+			return nil, fmt.Errorf("AuthenticateDocument:Failed to convert root certificate:%v", err)
+		}
+	default:
+		return nil, fmt.Errorf("AuthenticateDocument:Invalid root certificate type: got %T, expected x509.Certificate or *x509.Certificate", root_certificate)
+	}
+	root_pool.AddCert(zcryptoCert)
+
+	end_user_cert, err := zcrypto_x509.ParseCertificate(document.Certificate)
 	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument:ParseCertificate failed:%v", err)
 	}
-	cert_verify_options := x509.VerifyOptions{
-		Intermediates:             intermediates_pool,
-		Roots:                     root_pool,
-		KeyUsages:                 []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-		MaxConstraintComparisions: 0, // sic: This typo is correct per the documentation, it will not be fixed
-		// per this issue: https://github.com/golang/go/issues/27969
+	cert_verify_options := zcrypto_x509.VerifyOptions{
+		Intermediates: intermediates_pool,
+		Roots:         root_pool,
+		KeyUsages:     []zcrypto_x509.ExtKeyUsage{zcrypto_x509.ExtKeyUsageAny},
+		// Ignore date constraints. Nitro attestations are usually only valid for a short period of time,
+		DisableTimeChecks: true,
 	}
 	_, err = end_user_cert.Verify(cert_verify_options)
 	if err != nil {

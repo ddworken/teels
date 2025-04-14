@@ -72,8 +72,12 @@ github.com/veracruz-project/go-nitro-enclave-attestation-document v0.0.0-2023031
 github.com/veracruz-project/go-nitro-enclave-attestation-document v0.0.0-20230315135749-6fc97d770084/go.mod h1:JRldyv/2U+D7c5yI1HP9iY/Aa7j3TnhwpUvC1ZwE+Lw=
 github.com/veraison/go-cose v1.0.0-rc.1 h1:4qA7dbFJGvt7gcqv5MCIyCQvN+NpHFPkW7do3EeDLb8=
 github.com/veraison/go-cose v1.0.0-rc.1/go.mod h1:7ziE85vSq4ScFTg6wyoMXjucIGOf4JkFEZi/an96Ct4=
+github.com/weppos/publicsuffix-go v0.40.3-0.20250311103038-7794c8c0723b h1:PFOWooJRLwIuZk9i3ihzKzZffPrAVyOCzPInvLbn140=
+github.com/weppos/publicsuffix-go v0.40.3-0.20250311103038-7794c8c0723b/go.mod h1:EACzvcFHnxqmDapI/oqMjtpXz+mtjNzJe7r1zhRczZ0=
 github.com/x448/float16 v0.8.4 h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=
 github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg=
+github.com/zmap/zcrypto v0.0.0-20250324021606-4f0ea0eaccac h1:FWk36AHMBeDuQ3fl76mZj6LQjzAgnJVAErhMsTgqHps=
+github.com/zmap/zcrypto v0.0.0-20250324021606-4f0ea0eaccac/go.mod h1:7xhokKx8eQnfBRgAz75bGTvgc8yIW+crCtP3nvADosk=
 go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=
 go.uber.org/multierr v1.11.0/go.mod h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=
 golang.org/x/crypto v0.31.0 h1:ihbySMvVjLAeSH1IbfcRTkD/iNscyz8rGzjF/E5hV6U=
