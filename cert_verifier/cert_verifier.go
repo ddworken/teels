@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,14 +19,46 @@ import (
 	nitro "github.com/veracruz-project/go-nitro-enclave-attestation-document"
 )
 
-func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
-	encodedSubdomainPart := lib.Base32Encoder.EncodeToString(decodedSubdomainPart)
+func getAttestationBytes(encodedSubdomainPart string) ([]byte, error) {
 	filePath := filepath.Join("output-attestations", encodedSubdomainPart+".bin")
 
 	// Read the attestation file
 	attestationBytes, err := os.ReadFile(filePath)
+	if err == nil {
+		return attestationBytes, nil
+	}
+
+	// If the file doesn't exist, fetch it from the server
+	hostname := os.Getenv("VERIFIED_HOST_NAME")
+	if hostname == "" {
+		return nil, fmt.Errorf("VERIFIED_HOST_NAME environment variable is not set")
+	}
+
+	url := fmt.Sprintf("http://%s/static/output-attestations/%s.bin", hostname, encodedSubdomainPart)
+	resp, err := http.Get(url)
 	if err != nil {
-		return fmt.Errorf("error reading attestation file: %v", err)
+		return nil, fmt.Errorf("failed to fetch attestation: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch attestation: status code %d", resp.StatusCode)
+	}
+
+	attestationBytes, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read attestation response: %w", err)
+	}
+
+	return attestationBytes, nil
+
+}
+
+func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
+	encodedSubdomainPart := lib.Base32Encoder.EncodeToString(decodedSubdomainPart)
+	attestationBytes, err := getAttestationBytes(encodedSubdomainPart)
+	if err != nil {
+		return fmt.Errorf("error getting attestation bytes: %v", err)
 	}
 
 	// Deserialize the attestation
@@ -149,7 +184,7 @@ func validateCertificate(cert *x509.Certificate) error {
 	return nil
 }
 
-func main() {
+func verifyFromFile() {
 	certPEM, err := os.ReadFile("output-keys/certificate.crt")
 	if err != nil {
 		log.Printf("Error reading certificate file: %v\n", err)
@@ -167,6 +202,44 @@ func main() {
 		log.Printf("Error parsing certificate: %v\n", err)
 		return
 	}
+
+	// Run the validation
+	err = validateCertificate(cert)
+	if err != nil {
+		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
+		os.Exit(1)
+	} else {
+		log.Println("\n--- Certificate Validation SUCCEEDED ---")
+	}
+}
+
+func main() {
+	// Get the hostname from environment variable
+	hostname := os.Getenv("VERIFIED_HOST_NAME")
+	if hostname == "" {
+		log.Fatal("VERIFIED_HOST_NAME environment variable is not set")
+	}
+
+	// Set up TLS configuration
+	config := &tls.Config{
+		InsecureSkipVerify: true, // We'll verify the certificate ourselves
+	}
+
+	// Connect to the server
+	conn, err := tls.Dial("tcp", hostname+":443", config)
+	if err != nil {
+		log.Fatalf("Failed to connect to server: %v", err)
+	}
+	defer conn.Close()
+
+	// Get the certificate chain
+	state := conn.ConnectionState()
+	if len(state.PeerCertificates) == 0 {
+		log.Fatal("No certificates received from server")
+	}
+
+	// Get the leaf certificate (first in the chain)
+	cert := state.PeerCertificates[0]
 
 	// Run the validation
 	err = validateCertificate(cert)
