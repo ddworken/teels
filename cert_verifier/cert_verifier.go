@@ -155,6 +155,16 @@ func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash
 	return validateAwsNitroAttestation(string(attestation.AwsNitroAttestation), attestation.UnverifiedAttestedData)
 }
 
+// EXPECTED_PCRs maps PCR indices to their expected/allowed values
+var EXPECTED_PCRs = map[int32][]string{
+	0: {"ad2ab82e88c4cd28af7d0c593e3aca3fbda1699c3f4331192f37e5d7ad4dbffeed6334f482ecc380dd663f91eb78fff2"}, // PCR0 - Enclave image file
+	1: {"3b4a7e1b5f13c5a1000b3ed32ef8995ee13e9876329f9bc72650b918329ef9cf4e2e4d1e1e37375dab0ba56ba0974d03"}, // PCR1 - Linux kernel and bootstrap
+	2: {"a426e8d96a202420c48ef33622efd0914d9521841aaca6707d811b588e5da6947c0c27cd8b39e7cb5d6fba8b8b9f21aa"}, // PCR2 - Application
+	// For our purposes, we don't care about PCR3 and beyond. See
+	// https://docs.aws.amazon.com/enclaves/latest/user/set-up-attestation.html
+	// for more details.
+}
+
 func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttestedData []byte) error {
 	if base64EncodedAttestation == "" {
 		return fmt.Errorf("no AWS Nitro attestation data found")
@@ -202,6 +212,30 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 
 	if !bytes.Equal(expectedAttestedData, base32DecodedUserData) {
 		return fmt.Errorf("attested data does not match expected attested data: expected: %x actual: %x", expectedAttestedData, base32DecodedUserData)
+	}
+
+	// Validate PCRs against allowlist
+	for pcrIndex, pcrValue := range doc.PCRs {
+		expectedValues, exists := EXPECTED_PCRs[int32(pcrIndex)]
+		if !exists {
+			continue // Skip PCRs not in our allowlist
+		}
+
+		// Convert PCR value to hex strin	g for comparison
+		pcrHex := fmt.Sprintf("%x", pcrValue)
+
+		// Check if the PCR value is in the allowed set
+		found := false
+		for _, expected := range expectedValues {
+			if pcrHex == expected {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("PCR%d value %s is not in the allowed set of values", pcrIndex, pcrHex)
+		}
 	}
 
 	return nil
