@@ -13,7 +13,7 @@ socat-run:
 
 
 debug-run: socat-run
-	nitro-cli run-enclave --eif-path hello_nitro.eif --memory 2048 --cpu-count 1 --enclave-cid 16 --debug-mode
+	nitro-cli run-enclave --eif-path hello_nitro.eif --memory 2048 --cpu-count 1 --enclave-cid 16
 
 stop: socat-stop 
 	nitro-cli terminate-enclave --all
