@@ -1,0 +1,41 @@
+name: Build and Push EIF
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  packages: write  # Required for GHCR push
+  id-token: write # Required for signing
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build EIF
+        id: build-eif
+        uses: richardfan1126/nitro-enclaves-eif-build-action@3f9abca142e8bf5e2c70108de61ef2832bc3cf12
+        with:
+          dockerfile-path: hello_world_demo/Dockerfile
+          enable-ghcr-push: true
+          enable-artifact-sign: true
+          eif-file-name: enclave.eif
+          eif-info-file-name: enclave-info.json
+          artifact-tag: latest
+          save-pcrs-in-annotation: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Output EIF Info
+        run: |
+          echo "EIF file path: ${{ steps.build-eif.outputs.eif-file-path }}"
+          echo "EIF info path: ${{ steps.build-eif.outputs.eif-info-path }}"
+          echo "GHCR artifact path: ${{ steps.build-eif.outputs.ghcr-artifact-path }}"
+          echo "GHCR artifact digest: ${{ steps.build-eif.outputs.ghcr-artifact-digest }}"
+          echo "Rekor log index: ${{ steps.build-eif.outputs.rekor-log-index }}" 
