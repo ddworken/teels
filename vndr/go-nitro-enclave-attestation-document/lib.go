@@ -105,7 +105,10 @@ func AuthenticateDocument(data []byte, root_certificate interface{}, add_prefix 
 		Intermediates: intermediates_pool,
 		Roots:         root_pool,
 		KeyUsages:     []zcrypto_x509.ExtKeyUsage{zcrypto_x509.ExtKeyUsageAny},
-		// Ignore date constraints. Nitro attestations are usually only valid for a short period of time,
+		// Ignore date constraints. Nitro attestations are usually only valid for a short period of time, but
+		// we need to be able to verify them for the lifetime of a TLS cert.
+		// TODO: If this code is being productionized, this should be tightened up to e.g. just disable time-based
+		// checks for the lifetime of the cert (but still reject any attestations that are outside the cert lifetime).
 		DisableTimeChecks: true,
 	}
 	_, err = end_user_cert.Verify(cert_verify_options)
