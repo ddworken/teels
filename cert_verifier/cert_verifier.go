@@ -273,9 +273,6 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 		return fmt.Errorf("failed to parse root certificate: %w", err)
 	}
 
-	// Skip all date-based validation and only verify the certificate's signature
-	// This is equivalent to checking that the certificate is properly signed by its issuer
-	// but completely ignores all time-based validity checks
 	if err := rootCert.CheckSignatureFrom(rootCert); err != nil {
 		return fmt.Errorf("failed to verify root certificate signature: %w", err)
 	}
