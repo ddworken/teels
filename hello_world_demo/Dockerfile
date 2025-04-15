@@ -63,6 +63,7 @@ COPY --from=go-builder /app/formatter.html /app/
 COPY --from=go-builder /app/static/ /app/static/
 COPY --from=cert-provisioner-builder /cert-provisioner /app/
 RUN chmod +x /app/cert-provisioner && chmod +x /app/enclave-server
+RUN uname -a
 
 # Set the working directory to /app
 WORKDIR /app
