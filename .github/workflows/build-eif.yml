@@ -14,14 +14,14 @@ permissions:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build EIF
         id: build-eif
-        uses: richardfan1126/nitro-enclaves-eif-build-action@3f9abca142e8bf5e2c70108de61ef2832bc3cf12
+        uses: ddworken/nitro-enclaves-eif-build-action@master
         with:
           dockerfile-path: hello_world_demo/Dockerfile
           enable-ghcr-push: true
