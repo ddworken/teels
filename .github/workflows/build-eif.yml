@@ -21,7 +21,7 @@ jobs:
 
       - name: Build EIF
         id: build-eif
-        uses: ddworken/nitro-enclaves-eif-build-action@master
+        uses: ddworken/nitro-enclaves-eif-build-action@main
         with:
           dockerfile-path: hello_world_demo/Dockerfile
           enable-ghcr-push: true
