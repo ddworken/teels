@@ -42,22 +42,49 @@ type PcrValues struct {
 	PCR2    string
 }
 
-// retrieveExpectedPcrs downloads and processes eif-info.txt files from v0.1 to v0.20
+// GitHubRelease represents a release from the GitHub API
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+}
+
+// retrieveExpectedPcrs downloads and processes eif-info.txt files from all available releases
 func retrieveExpectedPcrs() ([]PcrValues, error) {
 	var results []PcrValues
 
-	for i := 5; i <= 20; i++ {
-		version := fmt.Sprintf("v0.%d", i)
-		url := fmt.Sprintf("https://github.com/ddworken/teels/releases/download/%s/eif-info.txt", version)
+	// Fetch list of releases from GitHub API
+	releasesUrl := "https://api.github.com/repos/ddworken/teels/releases"
+	resp, err := httpGetWithRetryAndCaching(releasesUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch releases: %v", err)
+	}
+	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned status code %d", resp.StatusCode)
+	}
+
+	var releases []GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return nil, fmt.Errorf("failed to decode releases JSON: %v", err)
+	}
+
+	for _, release := range releases {
+		// Skip releases that don't match our version pattern
+		if !strings.HasPrefix(release.TagName, "v0.") {
+			continue
+		}
+
+		url := fmt.Sprintf("https://github.com/ddworken/teels/releases/download/%s/eif-info.txt", release.TagName)
 		resp, err := httpGetWithRetryAndCaching(url)
 		if err != nil {
-			log.Printf("Warning: Failed to fetch %s: %v", version, err)
+			log.Printf("Warning: Failed to fetch %s: %v", release.TagName, err)
 			continue
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			log.Printf("Warning: %s returned status code %d", version, resp.StatusCode)
+			if resp.StatusCode != http.StatusNotFound {
+				log.Printf("Warning: %s returned status code %d", release.TagName, resp.StatusCode)
+			}
 			resp.Body.Close()
 			continue
 		}
@@ -65,20 +92,18 @@ func retrieveExpectedPcrs() ([]PcrValues, error) {
 		var eifInfo EifInfo
 		decoder := json.NewDecoder(resp.Body)
 		if err := decoder.Decode(&eifInfo); err != nil {
-			log.Printf("Warning: Failed to decode JSON for %s: %v", version, err)
+			log.Printf("Warning: Failed to decode JSON for %s: %v", release.TagName, err)
 			resp.Body.Close()
 			continue
 		}
 		resp.Body.Close()
 
 		results = append(results, PcrValues{
-			Version: version,
+			Version: release.TagName,
 			PCR0:    eifInfo.Measurements.PCR0,
 			PCR1:    eifInfo.Measurements.PCR1,
 			PCR2:    eifInfo.Measurements.PCR2,
 		})
-
-		log.Printf("Successfully processed %s", version)
 	}
 
 	if len(results) == 0 {
@@ -275,39 +300,27 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 		return fmt.Errorf("failed to retrieve expected PCR values: %w", err)
 	}
 
-	// Create a map to store all valid PCR values for each index
-	validPcrs := make(map[int32]map[string]bool)
-	for _, pcrSet := range expectedPcrs {
-		// Initialize maps if they don't exist
-		if validPcrs[0] == nil {
-			validPcrs[0] = make(map[string]bool)
-		}
-		if validPcrs[1] == nil {
-			validPcrs[1] = make(map[string]bool)
-		}
-		if validPcrs[2] == nil {
-			validPcrs[2] = make(map[string]bool)
-		}
-
-		// Add PCR values to the respective sets
-		validPcrs[0][pcrSet.PCR0] = true
-		validPcrs[1][pcrSet.PCR1] = true
-		validPcrs[2][pcrSet.PCR2] = true
+	// Convert PCR values to hex strings for comparison
+	pcrHexValues := make([]string, 3)
+	for i := int32(0); i < 3; i++ {
+		pcrHexValues[i] = fmt.Sprintf("%x", doc.PCRs[i])
 	}
 
-	// Validate PCRs against the collected valid values
-	for pcrIndex, pcrValue := range doc.PCRs {
-		if pcrIndex > 2 {
-			continue // Skip PCRs beyond 2 as we don't care about them
+	// Find matching version by comparing PCR values
+	var matchingVersion string
+	for _, pcrSet := range expectedPcrs {
+		if pcrHexValues[0] == pcrSet.PCR0 &&
+			pcrHexValues[1] == pcrSet.PCR1 &&
+			pcrHexValues[2] == pcrSet.PCR2 {
+			matchingVersion = pcrSet.Version
+			log.Printf("Attestation matches version tag: %s", matchingVersion)
+			break
 		}
+	}
 
-		// Convert PCR value to hex string for comparison
-		pcrHex := fmt.Sprintf("%x", pcrValue)
-
-		// Check if the PCR value is in the allowed set
-		if !validPcrs[int32(pcrIndex)][pcrHex] {
-			return fmt.Errorf("PCR%d value %s is not in the allowed set of values", pcrIndex, pcrHex)
-		}
+	if matchingVersion == "" {
+		return fmt.Errorf("PCR values do not match any known version: PCR0=%s PCR1=%s PCR2=%s",
+			pcrHexValues[0], pcrHexValues[1], pcrHexValues[2])
 	}
 
 	return nil
