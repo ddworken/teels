@@ -1,4 +1,4 @@
-.PHONY: build debug-run stop socat-run socat-stop prod-run nitro-stop release
+.PHONY: build debug-run stop socat-run socat-stop prod-run nitro-stop release configure
 
 build:
 	rm *.eif || true
@@ -38,4 +38,19 @@ release:
 	gh release create v0.`cat VERSION` --generate-notes
 	git push && git push --tags
 
-# sudo socat vsock-listen:17,fork,reuseaddr tcp-connect:127.0.0.1:80 2>&1 > /dev/null &
+configure:
+	sudo yum install -y docker git go socat htop rust cargo 
+	sudo service docker start
+	sudo usermod -a -G docker ec2-user
+	sudo dnf install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel -y
+	sudo usermod -aG ne ec2-user
+	git clone git@github.com:ddworken/teels.git
+	git config --global user.name "David Dworken"
+	git config --global user.email "david@daviddworken.com"
+	curl https://hishtory.dev/install.py | python3 -
+	type -p yum-config-manager >/dev/null || sudo yum install -y yum-utils
+	sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+	sudo yum install -y gh
+	cp configs/nitro-allocator.yaml /etc/nitro_enclaves/allocator.yaml
+	sudo systemctl enable --now nitro-enclaves-allocator.service
+	gh auth login
