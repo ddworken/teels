@@ -45,13 +45,13 @@ git clone git@github.com:ddworken/teels.git
 git config --global user.name "David Dworken"
 git config --global user.email "david@daviddworken.com"
 curl https://hishtory.dev/install.py | python3 -
+type -p yum-config-manager >/dev/null || sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+sudo yum install -y gh
 
-#sudo dd if=/dev/zero of=/swapfile bs=1M count=1024
-#chmod 0600 /swapfile
-#sudo mkswap /swapfile
-#sudo swapon /swapfile
 
 # Logout and then log back in
+gh auth login  
 sudo nano /etc/nitro_enclaves/allocator.yaml # configure 1 CPU and memory limit 
 sudo systemctl enable --now nitro-enclaves-allocator.service
  ```
