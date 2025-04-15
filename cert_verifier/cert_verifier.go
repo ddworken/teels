@@ -47,17 +47,23 @@ type GitHubRelease struct {
 	TagName string `json:"tag_name"`
 }
 
+const (
+	maxRetries    = 5
+	baseDelay     = time.Second
+	maxDelay      = 20 * time.Second
+	cacheDir      = "/tmp/http-get-cache"
+	githubBaseURL = "https://api.github.com/repos/ddworken/teels"
+)
+
 // retrieveExpectedPcrs downloads and processes eif-info.txt files from all available releases
 // TODO: This currently just trusts the PCR values listed on GH releases. Ideally, we would actually
 // validate the sigstore signatures on top of those files.
 func retrieveExpectedPcrs() ([]PcrValues, error) {
 	var results []PcrValues
 
-	// Fetch list of releases from GitHub API
-	releasesUrl := "https://api.github.com/repos/ddworken/teels/releases"
-	resp, err := httpGetWithRetryAndCaching(releasesUrl)
+	resp, err := httpGetWithRetryAndCaching(githubBaseURL + "/releases")
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch releases: %v", err)
+		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -67,11 +73,10 @@ func retrieveExpectedPcrs() ([]PcrValues, error) {
 
 	var releases []GitHubRelease
 	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		return nil, fmt.Errorf("failed to decode releases JSON: %v", err)
+		return nil, fmt.Errorf("failed to decode releases JSON: %w", err)
 	}
 
 	for _, release := range releases {
-		// Skip releases that don't match our version pattern
 		if !strings.HasPrefix(release.TagName, "v0.") {
 			continue
 		}
@@ -92,8 +97,7 @@ func retrieveExpectedPcrs() ([]PcrValues, error) {
 		}
 
 		var eifInfo EifInfo
-		decoder := json.NewDecoder(resp.Body)
-		if err := decoder.Decode(&eifInfo); err != nil {
+		if err := json.NewDecoder(resp.Body).Decode(&eifInfo); err != nil {
 			log.Printf("Warning: Failed to decode JSON for %s: %v", release.TagName, err)
 			resp.Body.Close()
 			continue
@@ -115,30 +119,21 @@ func retrieveExpectedPcrs() ([]PcrValues, error) {
 	return results, nil
 }
 
-// httpGetWithRetryAndCaching performs an HTTP GET request with retry logic for 429 responses and caches successful responses
+// httpGetWithRetryAndCaching performs an HTTP GET request with retry logic and caching
 func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
-	// Create cache directory if it doesn't exist
-	cacheDir := "/tmp/http-get-cache"
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	// Create a cache key from the URL
 	cacheKey := fmt.Sprintf("%x", sha256.Sum256([]byte(url)))
 	cachePath := filepath.Join(cacheDir, cacheKey)
 
-	// Try to read from cache first
 	if cachedData, err := os.ReadFile(cachePath); err == nil {
-		// Create a response from cached data
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader(cachedData)),
 		}, nil
 	}
-
-	maxRetries := 5
-	baseDelay := 1 * time.Second
-	maxDelay := 20 * time.Second
 
 	for i := 0; i < maxRetries; i++ {
 		resp, err := http.Get(url)
@@ -147,7 +142,6 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			// Read the response body
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				resp.Body.Close()
@@ -155,12 +149,10 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 			}
 			resp.Body.Close()
 
-			// Cache the successful response
 			if err := os.WriteFile(cachePath, body, 0644); err != nil {
 				log.Printf("Warning: failed to cache response: %v", err)
 			}
 
-			// Return a new response with the cached body
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(bytes.NewReader(body)),
@@ -172,17 +164,9 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 			return resp, nil
 		}
 
-		// Calculate exponential backoff with jitter
-		// 2^i gives us exponential growth (1, 2, 4 seconds)
-		// rand.Float64() * 0.5 gives us up to 50% jitter
 		delay := baseDelay * time.Duration(1<<i)
 		jitter := time.Duration(rand.Float64() * 0.5 * float64(delay))
-		waitTime := delay + jitter
-
-		// Cap the maximum wait time
-		if waitTime > maxDelay {
-			waitTime = maxDelay
-		}
+		waitTime := min(delay+jitter, maxDelay)
 
 		log.Printf("Received 429 response, waiting %v before retry %d/%d", waitTime, i+1, maxRetries)
 		time.Sleep(waitTime)
@@ -195,13 +179,11 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 func getAttestationBytes(encodedSubdomainPart string) ([]byte, error) {
 	filePath := filepath.Join("output-attestations", encodedSubdomainPart+".bin")
 
-	// Read the attestation file
 	attestationBytes, err := os.ReadFile(filePath)
 	if err == nil {
 		return attestationBytes, nil
 	}
 
-	// If the file doesn't exist, fetch it from the server
 	hostname := os.Getenv("VERIFIED_HOST_NAME")
 	if hostname == "" {
 		return nil, fmt.Errorf("VERIFIED_HOST_NAME environment variable is not set")
@@ -218,30 +200,24 @@ func getAttestationBytes(encodedSubdomainPart string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to fetch attestation: status code %d", resp.StatusCode)
 	}
 
-	attestationBytes, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read attestation response: %w", err)
-	}
-
-	return attestationBytes, nil
+	return io.ReadAll(resp.Body)
 }
 
 func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
 	encodedSubdomainPart := lib.Base32Encoder.EncodeToString(decodedSubdomainPart)
 	attestationBytes, err := getAttestationBytes(encodedSubdomainPart)
 	if err != nil {
-		return fmt.Errorf("error getting attestation bytes: %v", err)
+		return fmt.Errorf("error getting attestation bytes: %w", err)
 	}
 
-	// Deserialize the attestation
 	var attestation lib.AttestationReport
 	if err := json.Unmarshal(attestationBytes, &attestation); err != nil {
-		return fmt.Errorf("error deserializing attestation: %v", err)
+		return fmt.Errorf("error deserializing attestation: %w", err)
 	}
 
-	// Check if the attested data matches the pubKeyHash
 	if !bytes.Equal(attestation.UnverifiedAttestedData, pubKeyHash) {
-		return fmt.Errorf("attested data does not match public key hash: pubKeyHash: %x attestedData: %x", pubKeyHash, attestation.UnverifiedAttestedData)
+		return fmt.Errorf("attested data does not match public key hash: pubKeyHash: %x attestedData: %x",
+			pubKeyHash, attestation.UnverifiedAttestedData)
 	}
 
 	return validateAwsNitroAttestation(string(attestation.AwsNitroAttestation), attestation.UnverifiedAttestedData)
@@ -257,7 +233,6 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 		return fmt.Errorf("failed to decode AWS Nitro attestation: %w", err)
 	}
 
-	// Read the AWS Nitro root certificate
 	rootCertPEM, err := os.ReadFile("cert_verifier/aws_nitro_root.pem")
 	if err != nil {
 		return fmt.Errorf("failed to read AWS Nitro root certificate: %w", err)
@@ -277,52 +252,42 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 		return fmt.Errorf("failed to verify root certificate signature: %w", err)
 	}
 
-	// Validate the attestation document using the veracruz-project library
 	doc, err := nitro.AuthenticateDocument(attestationBytes, *rootCert, true)
 	if err != nil {
 		return fmt.Errorf("failed to validate AWS Nitro attestation: %w", err)
 	}
 
-	// Base32 decode the user data field
 	base32DecodedUserData, err := lib.Base32Encoder.DecodeString(string(doc.User_Data))
 	if err != nil {
 		return fmt.Errorf("failed to base32 decode user data: %w", err)
 	}
 
 	if !bytes.Equal(expectedAttestedData, base32DecodedUserData) {
-		return fmt.Errorf("attested data does not match expected attested data: expected: %x actual: %x", expectedAttestedData, base32DecodedUserData)
+		return fmt.Errorf("attested data does not match expected attested data: expected: %x actual: %x",
+			expectedAttestedData, base32DecodedUserData)
 	}
 
-	// Retrieve expected PCR values from all versions
 	expectedPcrs, err := retrieveExpectedPcrs()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve expected PCR values: %w", err)
 	}
 
-	// Convert PCR values to hex strings for comparison
 	pcrHexValues := make([]string, 3)
 	for i := int32(0); i < 3; i++ {
 		pcrHexValues[i] = fmt.Sprintf("%x", doc.PCRs[i])
 	}
 
-	// Find matching version by comparing PCR values
-	var matchingVersion string
 	for _, pcrSet := range expectedPcrs {
 		if pcrHexValues[0] == pcrSet.PCR0 &&
 			pcrHexValues[1] == pcrSet.PCR1 &&
 			pcrHexValues[2] == pcrSet.PCR2 {
-			matchingVersion = pcrSet.Version
-			log.Printf("Attestation matches version tag: %s", matchingVersion)
-			break
+			log.Printf("Attestation matches version tag: %s", pcrSet.Version)
+			return nil
 		}
 	}
 
-	if matchingVersion == "" {
-		return fmt.Errorf("PCR values do not match any known version: PCR0=%s PCR1=%s PCR2=%s",
-			pcrHexValues[0], pcrHexValues[1], pcrHexValues[2])
-	}
-
-	return nil
+	return fmt.Errorf("PCR values do not match any known version: PCR0=%s PCR1=%s PCR2=%s",
+		pcrHexValues[0], pcrHexValues[1], pcrHexValues[2])
 }
 
 // validateCertificate takes an x509 certificate and performs a series of validations.
@@ -529,7 +494,7 @@ func queryCTLogs(domain string) ([]*x509.Certificate, error) {
 	return x509Certs, nil
 }
 
-func verifyFromHttpsRequest(hostname string) {
+func verifyFromHttpsRequest(hostname string) error {
 	// Set up TLS configuration
 	config := &tls.Config{
 		InsecureSkipVerify: true, // We'll verify the certificate ourselves
@@ -538,27 +503,21 @@ func verifyFromHttpsRequest(hostname string) {
 	// Connect to the server
 	conn, err := tls.Dial("tcp", hostname+":443", config)
 	if err != nil {
-		log.Fatalf("Failed to connect to server: %v", err)
+		return fmt.Errorf("failed to connect to server: %w", err)
 	}
 	defer conn.Close()
 
 	// Get the certificate chain
 	state := conn.ConnectionState()
 	if len(state.PeerCertificates) == 0 {
-		log.Fatal("No certificates received from server")
+		return fmt.Errorf("no certificates received from server")
 	}
 
 	// Get the leaf certificate (first in the chain)
 	cert := state.PeerCertificates[0]
 
 	// Run the validation
-	err = validateCertificate(cert)
-	if err != nil {
-		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
-		os.Exit(1)
-	} else {
-		log.Println("\n--- Certificate Validation SUCCEEDED ---")
-	}
+	return validateCertificate(cert)
 }
 
 func main() {
@@ -567,26 +526,10 @@ func main() {
 		log.Fatal("VERIFIED_HOST_NAME environment variable is not set")
 	}
 
-	verifyFromHttpsRequest(hostname)
+	if err := verifyFromHttpsRequest(hostname); err != nil {
+		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
+		os.Exit(1)
+	}
 
-	// Query CT logs for the hostname
-	// log.Printf("Querying CT logs for %s...", hostname)
-	// ctCerts, err := queryCTLogs(hostname)
-	// if err != nil {
-	// 	log.Fatalf("Warning: failed to query CT logs: %v", err)
-	// }
-	// log.Printf("Found %d certificates in CT logs", len(ctCerts))
-	// for i, cert := range ctCerts {
-	// 	log.Printf("Certificate %d: %s (valid from %s to %s)",
-	// 		i+1, cert.Subject.CommonName,
-	// 		cert.NotBefore.Format(time.RFC3339),
-	// 		cert.NotAfter.Format(time.RFC3339))
-
-	// 	err = validateCertificate(cert)
-	// 	if err != nil {
-	// 		log.Printf("Certificate %d validation failed: %v", i+1, err)
-	// 	} else {
-	// 		log.Printf("Certificate %d validation succeeded", i+1)
-	// 	}
-	// }
+	log.Println("\n--- Certificate Validation SUCCEEDED ---")
 }
