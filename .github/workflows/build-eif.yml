@@ -43,3 +43,9 @@ jobs:
           echo "PCR0: $(jq -r '.Measurements.PCR0' ${{ steps.build-eif.outputs.eif-info-path }})"
           echo "PCR1: $(jq -r '.Measurements.PCR1' ${{ steps.build-eif.outputs.eif-info-path }})"
           echo "PCR2: $(jq -r '.Measurements.PCR2' ${{ steps.build-eif.outputs.eif-info-path }})" 
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ steps.build-eif.outputs.eif-file-path }}
+          body: ${{ steps.generate-release-note.outputs.RELEASE_NOTE }}
