@@ -48,6 +48,8 @@ type GitHubRelease struct {
 }
 
 // retrieveExpectedPcrs downloads and processes eif-info.txt files from all available releases
+// TODO: This currently just trusts the PCR values listed on GH releases. Ideally, we would actually
+// validate the sigstore signatures on top of those files.
 func retrieveExpectedPcrs() ([]PcrValues, error) {
 	var results []PcrValues
 
