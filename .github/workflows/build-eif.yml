@@ -2,15 +2,15 @@ name: Build and Push EIF
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    tags:
+      - 'v*'
   # Allow manual trigger
   workflow_dispatch:
 
 permissions:
   packages: write  # Required for GHCR push
   id-token: write # Required for signing
+  contents: write # Required for uploading to releases
 
 jobs:
   build-and-push:
@@ -28,9 +28,30 @@ jobs:
           enable-artifact-sign: true
           eif-file-name: enclave.eif
           eif-info-file-name: enclave-info.json
-          artifact-tag: latest
+          artifact-tag: ${{ github.ref_name }}
           save-pcrs-in-annotation: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload EIF to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          # Extract PCR values for release notes
+          PCR0=$(jq -r '.Measurements.PCR0' ${{ steps.build-eif.outputs.eif-info-path }})
+          PCR1=$(jq -r '.Measurements.PCR1' ${{ steps.build-eif.outputs.eif-info-path }})
+          PCR2=$(jq -r '.Measurements.PCR2' ${{ steps.build-eif.outputs.eif-info-path }})
+          
+          # Create release notes with PCR values
+          echo "PCR Values:" > release_notes.txt
+          echo "PCR0: $PCR0" >> release_notes.txt
+          echo "PCR1: $PCR1" >> release_notes.txt
+          echo "PCR2: $PCR2" >> release_notes.txt
+          echo "" >> release_notes.txt
+          echo "GHCR Artifact: ${{ steps.build-eif.outputs.ghcr-artifact-path }}" >> release_notes.txt
+          echo "Rekor Log Index: ${{ steps.build-eif.outputs.rekor-log-index }}" >> release_notes.txt
+          
+          # Upload EIF file and info to the release
+          gh release upload ${{ github.ref_name }} ${{ steps.build-eif.outputs.eif-file-path }} ${{ steps.build-eif.outputs.eif-info-path }}
+          gh release edit ${{ github.ref_name }} --notes-file release_notes.txt
 
       - name: Output EIF Info
         run: |
@@ -42,9 +63,4 @@ jobs:
           echo "PCR Values:"
           echo "PCR0: $(jq -r '.Measurements.PCR0' ${{ steps.build-eif.outputs.eif-info-path }})"
           echo "PCR1: $(jq -r '.Measurements.PCR1' ${{ steps.build-eif.outputs.eif-info-path }})"
-          echo "PCR2: $(jq -r '.Measurements.PCR2' ${{ steps.build-eif.outputs.eif-info-path }})" 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ${{ steps.build-eif.outputs.eif-file-path }}
-          body: ${{ steps.generate-release-note.outputs.RELEASE_NOTE }}
+          echo "PCR2: $(jq -r '.Measurements.PCR2' ${{ steps.build-eif.outputs.eif-info-path }})"
