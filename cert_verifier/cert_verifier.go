@@ -23,6 +23,71 @@ import (
 	nitro "github.com/veracruz-project/go-nitro-enclave-attestation-document"
 )
 
+// EifInfo represents the structure of the eif-info.txt file
+type EifInfo struct {
+	EifVersion   int `json:"EifVersion"`
+	Measurements struct {
+		HashAlgorithm string `json:"HashAlgorithm"`
+		PCR0          string `json:"PCR0"`
+		PCR1          string `json:"PCR1"`
+		PCR2          string `json:"PCR2"`
+	} `json:"Measurements"`
+}
+
+// PcrValues represents the PCR values for a specific version
+type PcrValues struct {
+	Version string
+	PCR0    string
+	PCR1    string
+	PCR2    string
+}
+
+// retrieveExpectedPcrs downloads and processes eif-info.txt files from v0.1 to v0.20
+func retrieveExpectedPcrs() ([]PcrValues, error) {
+	var results []PcrValues
+
+	for i := 5; i <= 20; i++ {
+		version := fmt.Sprintf("v0.%d", i)
+		url := fmt.Sprintf("https://github.com/ddworken/teels/releases/download/%s/eif-info.txt", version)
+
+		resp, err := httpGetWithRetryAndCaching(url)
+		if err != nil {
+			log.Printf("Warning: Failed to fetch %s: %v", version, err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Warning: %s returned status code %d", version, resp.StatusCode)
+			resp.Body.Close()
+			continue
+		}
+
+		var eifInfo EifInfo
+		decoder := json.NewDecoder(resp.Body)
+		if err := decoder.Decode(&eifInfo); err != nil {
+			log.Printf("Warning: Failed to decode JSON for %s: %v", version, err)
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		results = append(results, PcrValues{
+			Version: version,
+			PCR0:    eifInfo.Measurements.PCR0,
+			PCR1:    eifInfo.Measurements.PCR1,
+			PCR2:    eifInfo.Measurements.PCR2,
+		})
+
+		log.Printf("Successfully processed %s", version)
+	}
+
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no valid PCR values found from any version")
+	}
+
+	return results, nil
+}
+
 // httpGetWithRetryAndCaching performs an HTTP GET request with retry logic for 429 responses and caches successful responses
 func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 	// Create cache directory if it doesn't exist
@@ -155,16 +220,6 @@ func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash
 	return validateAwsNitroAttestation(string(attestation.AwsNitroAttestation), attestation.UnverifiedAttestedData)
 }
 
-// EXPECTED_PCRs maps PCR indices to their expected/allowed values
-var EXPECTED_PCRs = map[int32][]string{
-	0: {"ad2ab82e88c4cd28af7d0c593e3aca3fbda1699c3f4331192f37e5d7ad4dbffeed6334f482ecc380dd663f91eb78fff2"}, // PCR0 - Enclave image file
-	1: {"3b4a7e1b5f13c5a1000b3ed32ef8995ee13e9876329f9bc72650b918329ef9cf4e2e4d1e1e37375dab0ba56ba0974d03"}, // PCR1 - Linux kernel and bootstrap
-	2: {"a426e8d96a202420c48ef33622efd0914d9521841aaca6707d811b588e5da6947c0c27cd8b39e7cb5d6fba8b8b9f21aa"}, // PCR2 - Application
-	// For our purposes, we don't care about PCR3 and beyond. See
-	// https://docs.aws.amazon.com/enclaves/latest/user/set-up-attestation.html
-	// for more details.
-}
-
 func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttestedData []byte) error {
 	if base64EncodedAttestation == "" {
 		return fmt.Errorf("no AWS Nitro attestation data found")
@@ -214,26 +269,43 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 		return fmt.Errorf("attested data does not match expected attested data: expected: %x actual: %x", expectedAttestedData, base32DecodedUserData)
 	}
 
-	// Validate PCRs against allowlist
-	for pcrIndex, pcrValue := range doc.PCRs {
-		expectedValues, exists := EXPECTED_PCRs[int32(pcrIndex)]
-		if !exists {
-			continue // Skip PCRs not in our allowlist
+	// Retrieve expected PCR values from all versions
+	expectedPcrs, err := retrieveExpectedPcrs()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve expected PCR values: %w", err)
+	}
+
+	// Create a map to store all valid PCR values for each index
+	validPcrs := make(map[int32]map[string]bool)
+	for _, pcrSet := range expectedPcrs {
+		// Initialize maps if they don't exist
+		if validPcrs[0] == nil {
+			validPcrs[0] = make(map[string]bool)
+		}
+		if validPcrs[1] == nil {
+			validPcrs[1] = make(map[string]bool)
+		}
+		if validPcrs[2] == nil {
+			validPcrs[2] = make(map[string]bool)
 		}
 
-		// Convert PCR value to hex strin	g for comparison
+		// Add PCR values to the respective sets
+		validPcrs[0][pcrSet.PCR0] = true
+		validPcrs[1][pcrSet.PCR1] = true
+		validPcrs[2][pcrSet.PCR2] = true
+	}
+
+	// Validate PCRs against the collected valid values
+	for pcrIndex, pcrValue := range doc.PCRs {
+		if pcrIndex > 2 {
+			continue // Skip PCRs beyond 2 as we don't care about them
+		}
+
+		// Convert PCR value to hex string for comparison
 		pcrHex := fmt.Sprintf("%x", pcrValue)
 
 		// Check if the PCR value is in the allowed set
-		found := false
-		for _, expected := range expectedValues {
-			if pcrHex == expected {
-				found = true
-				break
-			}
-		}
-
-		if !found {
+		if !validPcrs[int32(pcrIndex)][pcrHex] {
 			return fmt.Errorf("PCR%d value %s is not in the allowed set of values", pcrIndex, pcrHex)
 		}
 	}
