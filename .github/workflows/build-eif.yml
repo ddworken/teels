@@ -19,6 +19,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build EIF
         id: build-eif
         uses: richardfan1126/nitro-enclaves-eif-build-action@3f9abca142e8bf5e2c70108de61ef2832bc3cf12
@@ -31,6 +37,8 @@ jobs:
           artifact-tag: ${{ github.ref_name }}
           save-pcrs-in-annotation: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          docker-build-args: |
+            --platform linux/arm64
 
       - name: Upload EIF to Release
         if: startsWith(github.ref, 'refs/tags/')
