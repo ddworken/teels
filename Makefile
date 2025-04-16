@@ -1,6 +1,6 @@
 .PHONY: build debug-run stop socat-run socat-stop prod-run nitro-stop release configure
 
-build:
+debug-build:
 	rm *.eif || true
 	docker build -t hello_nitro -f hello_world_demo/Dockerfile .
 	nitro-cli build-enclave --docker-uri hello_nitro --output-file hello_nitro.eif
@@ -18,7 +18,7 @@ debug-run: socat-run nitro-stop
 stop: socat-stop nitro-stop 
 
 nitro-stop:
-	nitro-cli terminate-enclave --all
+	nitro-cli terminate-enclave --all || true
 
 socat-stop:
 	sudo killall socat || true
@@ -44,13 +44,13 @@ configure:
 	sudo usermod -a -G docker ec2-user
 	sudo dnf install aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel -y
 	sudo usermod -aG ne ec2-user
-	git clone git@github.com:ddworken/teels.git
 	git config --global user.name "David Dworken"
 	git config --global user.email "david@daviddworken.com"
 	curl https://hishtory.dev/install.py | python3 -
 	type -p yum-config-manager >/dev/null || sudo yum install -y yum-utils
 	sudo yum-config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
 	sudo yum install -y gh
-	cp configs/nitro-allocator.yaml /etc/nitro_enclaves/allocator.yaml
+	sudo cp configs/nitro-allocator.yaml /etc/nitro_enclaves/allocator.yaml
 	sudo systemctl enable --now nitro-enclaves-allocator.service
 	gh auth login
+	echo "Please exit your SSH session and log back in..."
