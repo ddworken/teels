@@ -149,12 +149,23 @@ func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	outputPath := filepath.Join(outputDir, lib.Base32Encoder.EncodeToString(hash[:])+".bin")
+	filename := lib.Base32Encoder.EncodeToString(hash[:]) + ".bin"
+	outputPath := filepath.Join(outputDir, filename)
 	if err := os.WriteFile(outputPath, jsonData, 0644); err != nil {
 		return nil, fmt.Errorf("failed to write attestation file: %w", err)
 	}
 
 	log.Printf("Generated attestation report and saved to: %s", outputPath)
+	log.Printf("Saving attestation to s3...")
+	httpClient, err := gettHttpClient("https://teels-attestations.s3.ap-south-1.amazonaws.com/")
+	if err != nil {
+		log.Printf("[WARN] failed to get HTTP client: %v", err)
+	} else {
+		err = lib.PublishToS3(context.TODO(), httpClient, string(jsonData), filename)
+		if err != nil {
+			log.Printf("[WARN] Failed to publish attestation to s3: %v", err)
+		}
+	}
 	return jsonData, nil
 }
 
@@ -370,8 +381,9 @@ func runSocatCommand(stdoutFile, stderrFile *os.File, args ...string) error {
 }
 
 var HOSTNAME_TO_PORT = map[string]string{
-	"acme-staging-v02.api.letsencrypt.org": "8001",
-	"acme-v02.api.letsencrypt.org":         "8002",
+	"acme-staging-v02.api.letsencrypt.org":           "8001",
+	"acme-v02.api.letsencrypt.org":                   "8002",
+	"teels-attestations.s3.ap-south-1.amazonaws.com": "8003",
 }
 
 // gettHttpClient returns an http.Client that resolves the given URL's hostname to 127.0.0.1:<port> as per HOSTNAME_TO_PORT.
