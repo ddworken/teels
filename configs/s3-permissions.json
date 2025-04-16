@@ -1,0 +1,30 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "PublicReadGetObject",
+            "Effect": "Allow",
+            "Principal": "*",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::teels-attestations/*"
+        },
+        {
+            "Sid": "AccountWriteAccess",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "*"
+            },
+            "Action": [
+                "s3:PutObject",
+                "s3:PutObjectAcl",
+                "s3:DeleteObject"
+            ],
+            "Resource": "arn:aws:s3:::teels-attestations/*",
+            "Condition": {
+                "StringEquals": {
+                    "aws:PrincipalAccount": "871864327709"
+                }
+            }
+        }
+    ]
+}
