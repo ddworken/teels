@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -14,6 +15,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -250,6 +252,10 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	legoConfig := lego.NewConfig(myUser)
 	legoConfig.CADirURL = config.TLSDirectoryURL
 	legoConfig.Certificate.KeyType = config.TLSKeyType
+	legoConfig.HTTPClient, err = gettHttpClient(config.TLSDirectoryURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get HTTP client: %w", err)
+	}
 
 	// Test the connection to Let's Encrypt API (ensures that our TCP proxy is working)
 	resp, err := legoConfig.HTTPClient.Get(config.TLSDirectoryURL)
@@ -363,7 +369,36 @@ func runSocatCommand(stdoutFile, stderrFile *os.File, args ...string) error {
 	}
 }
 
-// Starts a background TCP proxy to listen on port 443 and forward to the vsock-connect:2:8002.
+var HOSTNAME_TO_PORT = map[string]string{
+	"acme-staging-v02.api.letsencrypt.org": "8001",
+	"acme-v02.api.letsencrypt.org":         "8002",
+}
+
+// gettHttpClient returns an http.Client that resolves the given URL's hostname to 127.0.0.1:<port> as per HOSTNAME_TO_PORT.
+func gettHttpClient(rawurl string) (*http.Client, error) {
+	parsedUrl, err := url.Parse(rawurl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
+	}
+	hostname := parsedUrl.Hostname()
+	port, ok := HOSTNAME_TO_PORT[hostname]
+	if !ok {
+		return nil, fmt.Errorf("hostname %s not found in HOSTNAME_TO_PORT", hostname)
+	}
+
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			// Always dial 127.0.0.1:<port> for this hostname
+			return net.Dial("tcp", "127.0.0.1:"+port)
+		},
+	}
+	client := &http.Client{
+		Transport: transport,
+	}
+	return client, nil
+}
+
+// Starts a background TCP proxy to listen on various ports to access outside networks.
 // This enables us to reach the Let's Encrypt API for cert provisioning.
 func startBackgroundTcpProxy() error {
 	// Configure loopback interface and routing
@@ -384,7 +419,21 @@ func startBackgroundTcpProxy() error {
 		return fmt.Errorf("failed to bring up lo:0 interface: %w", err)
 	}
 
-	return runSocatCommand(os.Stdout, os.Stderr, "-v", "-v", "tcp-listen:443,bind=127.0.0.1,fork,reuseaddr", "vsock-connect:2:8002")
+	// Start a socat proxy for each port in HOSTNAME_TO_PORT
+	for _, port := range HOSTNAME_TO_PORT {
+		err := runSocatCommand(
+			os.Stdout,
+			os.Stderr,
+			"-v", "-v",
+			"tcp-listen:"+port+",bind=127.0.0.1,fork,reuseaddr",
+			"vsock-connect:2:"+port,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to start socat proxy for port %s: %w", port, err)
+		}
+	}
+
+	return nil
 }
 
 func setupDualLogger() (*os.File, error) {
