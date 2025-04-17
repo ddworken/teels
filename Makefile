@@ -1,4 +1,4 @@
-.PHONY: build debug-run stop socat-run socat-stop prod-run nitro-stop release configure share-aws-creds
+.PHONY: build debug-run stop socat-run socat-stop prod-run nitro-stop release configure share-aws-creds dev-rsync
 
 debug-build:
 	rm *.eif || true
@@ -71,3 +71,9 @@ share-aws-creds:
 	    socat -v - vsock-connect:16:1337; \
 	  sleep 5; \
 	done &
+
+dev-rsync:
+	while true; do \
+		rsync -av * ec2-user@35.154.65.5:~/teels/ --exclude nsm-cli/target/; \
+		sleep 0.5; \
+	done
