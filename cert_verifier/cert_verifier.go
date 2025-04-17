@@ -114,22 +114,20 @@ func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error)
 			log.Printf("Warning: Failed to fetch %s: %v", release.TagName, err)
 			continue
 		}
+		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			if resp.StatusCode != http.StatusNotFound {
 				log.Printf("Warning: %s returned status code %d", release.TagName, resp.StatusCode)
 			}
-			resp.Body.Close()
 			continue
 		}
 
 		var eifInfo EifInfo
 		if err := json.NewDecoder(resp.Body).Decode(&eifInfo); err != nil {
 			log.Printf("Warning: Failed to decode JSON for %s: %v", release.TagName, err)
-			resp.Body.Close()
 			continue
 		}
-		resp.Body.Close()
 
 		results = append(results, PcrValues{
 			Version: release.TagName,
