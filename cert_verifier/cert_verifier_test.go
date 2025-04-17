@@ -102,21 +102,24 @@ func TestRetrieveExpectedPcrs(t *testing.T) {
 
 	// Test cases
 	tests := []struct {
-		name          string
-		client        HTTPClient
-		expectedError string
+		name             string
+		client           HTTPClient
+		expectedError    string
+		expectedPcrCount int
 	}{
 		{
-			name:          "successful retrieval",
-			client:        mockClient,
-			expectedError: "",
+			name:             "successful retrieval",
+			client:           mockClient,
+			expectedError:    "",
+			expectedPcrCount: 2,
 		},
 		{
 			name: "failed retrieval",
 			client: &MockHTTPClient{
 				Error: fmt.Errorf("network error"),
 			},
-			expectedError: "",
+			expectedError:    "failed to fetch releases: network error",
+			expectedPcrCount: 0,
 		},
 	}
 
@@ -127,15 +130,15 @@ func TestRetrieveExpectedPcrs(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
-				if len(pcrs) == 0 {
-					t.Error("expected PCR values but got none")
-				}
 			} else {
 				if err == nil {
 					t.Error("expected error but got none")
 				} else if !strings.Contains(err.Error(), tt.expectedError) {
 					t.Errorf("error %q does not contain expected string %q", err.Error(), tt.expectedError)
 				}
+			}
+			if len(pcrs) != tt.expectedPcrCount {
+				t.Errorf("expected %d PCR values but got %d", tt.expectedPcrCount, len(pcrs))
 			}
 		})
 	}
