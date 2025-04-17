@@ -85,3 +85,7 @@ dev-rsync:
 		rsync -av * ec2-user@35.154.65.5:~/teels/ --exclude nsm-cli/target/; \
 		sleep 0.5; \
 	done
+
+fmt:				## Format all files
+	gofumpt -l -w -extra cert_provisioner/ cert_verifier/ hello_world_demo/
+	gci write --custom-order -s standard -s 'Prefix(github.com/ddworken/teels)' -s default --skip-generated cert_provisioner/ cert_verifier/ hello_world_demo/

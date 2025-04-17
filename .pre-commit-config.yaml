@@ -20,4 +20,3 @@ repos:
         name: make-fmt
         entry: make fmt
         language: system
-        exclude: ^vndr/
