@@ -30,7 +30,7 @@ type AttestationReport struct {
 }
 
 // PublishToS3 publishes content to an AWS S3 bucket
-func PublishToS3(ctx context.Context, httpClient *http.Client, content string, filename string) error {
+func PublishToS3(ctx context.Context, httpClient *http.Client, content, filename string) error {
 	type AwsCreds struct {
 		AWSAccessKeyID     string `json:"AWS_ACCESS_KEY_ID"`
 		AWSSecretAccessKey string `json:"AWS_SECRET_ACCESS_KEY"`
@@ -90,7 +90,6 @@ func PublishToS3(ctx context.Context, httpClient *http.Client, content string, f
 		Body:    strings.NewReader(content),
 		Expires: aws.Time(time.Now().AddDate(1, 0, 0)), // Add 1 year expiration
 	})
-
 	if err != nil {
 		return fmt.Errorf("failed to upload to S3: %w", err)
 	}

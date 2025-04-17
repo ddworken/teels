@@ -152,7 +152,7 @@ func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error)
 
 // httpGetWithRetryAndCaching performs an HTTP GET request with retry logic and caching
 func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSystem) (*http.Response, error) {
-	if err := fs.MkdirAll(cacheDir, 0755); err != nil {
+	if err := fs.MkdirAll(cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -194,7 +194,7 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 			}
 			resp.Body.Close()
 
-			if err := fs.WriteFile(cachePath, body, 0644); err != nil {
+			if err := fs.WriteFile(cachePath, body, 0o644); err != nil {
 				log.Printf("Warning: failed to cache response: %v", err)
 			}
 
@@ -234,7 +234,7 @@ func getAttestationBytes(encodedSubdomainPart string, client HTTPClient, fs File
 	return nil, fmt.Errorf("failed to fetch attestation from %s: status code %d", url, resp.StatusCode)
 }
 
-func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte, client HTTPClient, fs FileSystem) error {
+func validateAttestationForPublicKeyHash(decodedSubdomainPart, pubKeyHash []byte, client HTTPClient, fs FileSystem) error {
 	encodedSubdomainPart := lib.Base32Encoder.EncodeToString(decodedSubdomainPart)
 	attestationBytes, err := getAttestationBytes(encodedSubdomainPart, client, fs)
 	if err != nil {

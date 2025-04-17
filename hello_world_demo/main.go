@@ -52,7 +52,6 @@ func rootHandler(w http.ResponseWriter, req *http.Request) {
 		}
 		return nil
 	})
-
 	if err != nil {
 		io.WriteString(w, fmt.Sprintf("Error listing files: %v\n", err))
 	}

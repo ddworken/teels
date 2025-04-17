@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/ddworken/teels/lib"
+
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/registration"
@@ -267,7 +268,7 @@ func TestSaveAttestation(t *testing.T) {
 
 	// Create the output directory within the temp directory
 	outputDir := filepath.Join(tempDir, "output-attestations")
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		t.Fatalf("Failed to create output directory: %v", err)
 	}
 
@@ -430,7 +431,7 @@ func TestLoadOrGenerateAccountKey(t *testing.T) {
 				}
 
 				keyPem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
-				return os.WriteFile(filepath.Join(tempDir, "account_key.pem"), keyPem, 0600)
+				return os.WriteFile(filepath.Join(tempDir, "account_key.pem"), keyPem, 0o600)
 			},
 			checkKey: func(key *ecdsa.PrivateKey) error {
 				if key.Curve != elliptic.P256() {
@@ -571,7 +572,7 @@ func TestCreateAwsNitroAttestation(t *testing.T) {
 	mockCmdContent := `#!/bin/sh
 echo "Mock attestation for $NSM_USER_DATA"
 `
-	if err := os.WriteFile(mockCmdPath, []byte(mockCmdContent), 0755); err != nil {
+	if err := os.WriteFile(mockCmdPath, []byte(mockCmdContent), 0o755); err != nil {
 		t.Fatalf("Failed to create mock command: %v", err)
 	}
 

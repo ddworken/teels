@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ddworken/teels/lib"
+
 	"github.com/go-acme/lego/v4/certcrypto"
 	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/challenge/http01"
@@ -168,13 +169,13 @@ func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 	if outputDir == "" {
 		outputDir = "/app/static/output-attestations" // Default value
 	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
 	filename := lib.Base32Encoder.EncodeToString(hash[:]) + ".bin"
 	outputPath := filepath.Join(outputDir, filename)
-	if err := os.WriteFile(outputPath, jsonData, 0644); err != nil {
+	if err := os.WriteFile(outputPath, jsonData, 0o644); err != nil {
 		return nil, fmt.Errorf("failed to write attestation file: %w", err)
 	}
 
@@ -220,7 +221,7 @@ func loadOrGenerateAccountKey() (*ecdsa.PrivateKey, error) {
 	}
 	log.Println("Generated new ECDSA P-256 account private key.")
 
-	if err := os.MkdirAll("output-keys", 0755); err != nil {
+	if err := os.MkdirAll("output-keys", 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
 
@@ -230,7 +231,7 @@ func loadOrGenerateAccountKey() (*ecdsa.PrivateKey, error) {
 	}
 
 	accountPrivKeyPem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: accountPrivKeyBytes})
-	if err := os.WriteFile(accountKeyPath, accountPrivKeyPem, 0600); err != nil {
+	if err := os.WriteFile(accountKeyPath, accountPrivKeyPem, 0o600); err != nil {
 		return nil, fmt.Errorf("failed to write account_key.pem: %w", err)
 	}
 	log.Println("Saved new account private key to output-keys/account_key.pem")
@@ -270,7 +271,7 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 
 	if !strings.Contains(string(hostsContent), hostsEntry) {
 		// Open file in append mode
-		hostsFile, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0644)
+		hostsFile, err := os.OpenFile("/etc/hosts", os.O_APPEND|os.O_WRONLY, 0o644)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open /etc/hosts for writing: %w", err)
 		}
@@ -345,12 +346,12 @@ func saveArtifacts(certificates *certificate.Resource, accountKey *ecdsa.Private
 	if outputDir == "" {
 		outputDir = "/app/output-keys" // Default value
 	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 
-	filePermsPrivate := os.FileMode(0600)
-	filePermsPublic := os.FileMode(0644)
+	filePermsPrivate := os.FileMode(0o600)
+	filePermsPublic := os.FileMode(0o644)
 
 	// Save account private key
 	accountPrivKeyBytes, err := x509.MarshalECPrivateKey(accountKey)
@@ -485,7 +486,7 @@ func startBackgroundTcpProxy() error {
 
 func setupDualLogger() (*os.File, error) {
 	// Create the log file
-	logFile, err := os.OpenFile("/app/static/log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	logFile, err := os.OpenFile("/app/static/log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		// If the directory doesn't exist, don't log to it
 		return nil, nil
