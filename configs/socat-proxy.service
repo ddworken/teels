@@ -1,0 +1,16 @@
+[Unit]
+Description=Socat Proxy Service for Nitro Enclave
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/bin/bash /home/ec2-user/teels/configs/scripts/socat-proxy.sh
+Restart=always
+RestartSec=1
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=socat-proxy
+
+[Install]
+WantedBy=multi-user.target 
