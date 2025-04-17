@@ -36,7 +36,6 @@ type Config struct {
 	HostName        string
 	TLSDirectoryURL string
 	TLSKeyType      certcrypto.KeyType
-	IsStaging       bool
 }
 
 // MyUser implements acme.User
@@ -80,12 +79,29 @@ func loadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	// Determine if we should use staging or production
+	isStaging := true
+	if env := os.Getenv("LETS_ENCRYPT_ENVIRONMENT"); env != "" {
+		switch strings.ToLower(env) {
+		case "production":
+			isStaging = false
+		case "staging":
+			isStaging = true
+		default:
+			return nil, fmt.Errorf("invalid LETS_ENCRYPT_ENVIRONMENT value '%s'. Must be either 'staging' or 'production'", env)
+		}
+	}
+
+	tlsDirectoryURL := lego.LEDirectoryStaging
+	if !isStaging {
+		tlsDirectoryURL = lego.LEDirectoryProduction
+	}
+
 	return &Config{
 		Email:           email,
 		HostName:        hostName,
-		TLSDirectoryURL: lego.LEDirectoryStaging,
+		TLSDirectoryURL: tlsDirectoryURL,
 		TLSKeyType:      keyType,
-		IsStaging:       true,
 	}, nil
 }
 
