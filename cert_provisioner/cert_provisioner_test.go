@@ -3,12 +3,18 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/ddworken/teels/lib"
 	"github.com/go-acme/lego/v4/certcrypto"
+	"github.com/go-acme/lego/v4/registration"
 )
 
 func TestParseTLSKeyType(t *testing.T) {
@@ -181,6 +187,191 @@ func TestLoadConfig(t *testing.T) {
 			if !tt.wantErr && tt.checkConfig != nil {
 				if err := tt.checkConfig(config); err != nil {
 					t.Error(err)
+				}
+			}
+		})
+	}
+}
+
+func TestMyUser(t *testing.T) {
+	// Generate a test private key
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate test private key: %v", err)
+	}
+
+	// Create a test registration resource
+	reg := &registration.Resource{
+		URI: "https://example.com/reg/123",
+	}
+
+	tests := []struct {
+		name     string
+		user     *MyUser
+		checkGet func(*MyUser) error
+	}{
+		{
+			name: "Basic user",
+			user: &MyUser{
+				Email:        "test@example.com",
+				Registration: reg,
+				key:          privateKey,
+			},
+			checkGet: func(u *MyUser) error {
+				if u.GetEmail() != "test@example.com" {
+					return fmt.Errorf("GetEmail() = %v, want %v", u.GetEmail(), "test@example.com")
+				}
+				if u.GetRegistration() != reg {
+					return fmt.Errorf("GetRegistration() returned different registration resource")
+				}
+				if u.GetPrivateKey() != privateKey {
+					return fmt.Errorf("GetPrivateKey() returned different private key")
+				}
+				return nil
+			},
+		},
+		{
+			name: "User with nil registration",
+			user: &MyUser{
+				Email:        "test@example.com",
+				Registration: nil,
+				key:          privateKey,
+			},
+			checkGet: func(u *MyUser) error {
+				if u.GetRegistration() != nil {
+					return fmt.Errorf("GetRegistration() = %v, want nil", u.GetRegistration())
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.checkGet(tt.user); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
+
+func TestSaveAttestation(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "attestation-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create the output directory within the temp directory
+	outputDir := filepath.Join(tempDir, "output-attestations")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		t.Fatalf("Failed to create output directory: %v", err)
+	}
+
+	// Override the output directory for testing
+	originalOutputDir := "/app/static/output-attestations"
+	defer func() {
+		os.Setenv("ATTESTATION_OUTPUT_DIR", originalOutputDir)
+	}()
+	os.Setenv("ATTESTATION_OUTPUT_DIR", outputDir)
+
+	// Create test data
+	testData := []byte("test attestation data")
+	attestation := lib.AttestationReport{
+		UnverifiedAttestedData: testData,
+		AwsNitroAttestation:    []byte("test nitro attestation"),
+	}
+
+	tests := []struct {
+		name        string
+		attestation lib.AttestationReport
+		wantErr     bool
+		checkFile   func(string) error
+	}{
+		{
+			name:        "Valid attestation",
+			attestation: attestation,
+			wantErr:     false,
+			checkFile: func(outputPath string) error {
+				// Read the saved file
+				data, err := os.ReadFile(outputPath)
+				if err != nil {
+					return fmt.Errorf("failed to read saved file: %v", err)
+				}
+
+				// Verify the content
+				var savedAttestation lib.AttestationReport
+				if err := json.Unmarshal(data, &savedAttestation); err != nil {
+					return fmt.Errorf("failed to unmarshal saved attestation: %v", err)
+				}
+
+				if string(savedAttestation.UnverifiedAttestedData) != string(testData) {
+					return fmt.Errorf("saved attestation data mismatch")
+				}
+
+				// Verify the filename is correct (based on hash)
+				hash := sha256.Sum256(data)
+				expectedFilename := lib.Base32Encoder.EncodeToString(hash[:]) + ".bin"
+				if filepath.Base(outputPath) != expectedFilename {
+					return fmt.Errorf("filename mismatch: got %v, want %v", filepath.Base(outputPath), expectedFilename)
+				}
+
+				return nil
+			},
+		},
+		{
+			name: "Empty attestation",
+			attestation: lib.AttestationReport{
+				UnverifiedAttestedData: []byte{},
+				AwsNitroAttestation:    []byte{},
+			},
+			wantErr: false,
+			checkFile: func(outputPath string) error {
+				data, err := os.ReadFile(outputPath)
+				if err != nil {
+					return fmt.Errorf("failed to read saved file: %v", err)
+				}
+
+				var savedAttestation lib.AttestationReport
+				if err := json.Unmarshal(data, &savedAttestation); err != nil {
+					return fmt.Errorf("failed to unmarshal saved attestation: %v", err)
+				}
+
+				if len(savedAttestation.UnverifiedAttestedData) != 0 {
+					return fmt.Errorf("expected empty attestation data")
+				}
+				return nil
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save the attestation
+			jsonData, err := saveAttestation(tt.attestation)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("saveAttestation() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr {
+				// Calculate the expected output path
+				hash := sha256.Sum256(jsonData)
+				filename := lib.Base32Encoder.EncodeToString(hash[:]) + ".bin"
+				outputPath := filepath.Join(outputDir, filename)
+
+				// Check if the file exists
+				if _, err := os.Stat(outputPath); os.IsNotExist(err) {
+					t.Errorf("output file %s does not exist", outputPath)
+					return
+				}
+
+				// Run additional checks if provided
+				if tt.checkFile != nil {
+					if err := tt.checkFile(outputPath); err != nil {
+						t.Error(err)
+					}
 				}
 			}
 		})

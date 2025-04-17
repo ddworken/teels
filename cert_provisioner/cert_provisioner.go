@@ -143,7 +143,10 @@ func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 
 	hash := sha256.Sum256(jsonData)
 
-	outputDir := "/app/static/output-attestations"
+	outputDir := os.Getenv("ATTESTATION_OUTPUT_DIR")
+	if outputDir == "" {
+		outputDir = "/app/static/output-attestations" // Default value
+	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %w", err)
 	}
