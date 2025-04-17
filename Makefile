@@ -22,6 +22,8 @@ nitro-stop:
 
 socat-stop:
 	sudo killall socat || true
+	kill $$(cat .share-aws-creds.pid 2>/dev/null) || true
+	rm -f .share-aws-creds.pid
 
 # Download and run the production EIF from GHCR
 # To specify a version: make prod-run VERSION_OVERRIDE=42
@@ -70,7 +72,7 @@ share-aws-creds:
 	  echo "{\"AWS_ACCESS_KEY_ID\": \"$$AWS_ACCESS_KEY_ID\", \"AWS_SECRET_ACCESS_KEY\": \"$$AWS_SECRET_ACCESS_KEY\", \"AWS_SESSION_TOKEN\": \"$$AWS_SESSION_TOKEN\", \"AWS_REGION\": \"$$AWS_REGION\"}" | \
 	    socat -v - vsock-connect:16:1337; \
 	  sleep 5; \
-	done &
+	done & echo $$! > .share-aws-creds.pid
 
 dev-rsync:
 	while true; do \
