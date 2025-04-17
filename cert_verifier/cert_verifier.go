@@ -88,7 +88,12 @@ const (
 func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error) {
 	var results []PcrValues
 
-	resp, err := httpGetWithRetryAndCaching(githubBaseURL+"/releases", client, fs)
+	req, err := http.NewRequest("GET", githubBaseURL+"/releases", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
@@ -536,7 +541,21 @@ func verifyFromHttpsRequest(hostname string, client HTTPClient, fs FileSystem) e
 	return validateCertificate(cert, client, fs)
 }
 
+func verifyFromCtLog(hostname string, client HTTPClient, fs FileSystem) error {
+	// TODO: Implement CT log verification
+	return nil
+}
+
 func main() {
+	if len(os.Args) < 2 {
+		log.Fatal("Usage: cert_verifier [live|audit]")
+	}
+
+	mode := os.Args[1]
+	if mode != "live" && mode != "audit" {
+		log.Fatal("First argument must be either 'live' or 'audit'")
+	}
+
 	hostname := os.Getenv("VERIFIED_HOST_NAME")
 	if hostname == "" {
 		log.Fatal("VERIFIED_HOST_NAME environment variable is not set")
@@ -546,7 +565,14 @@ func main() {
 	client := &http.Client{}
 	fs := RealFileSystem{}
 
-	if err := verifyFromHttpsRequest(hostname, client, fs); err != nil {
+	var err error
+	if mode == "live" {
+		err = verifyFromHttpsRequest(hostname, client, fs)
+	} else {
+		err = verifyFromCtLog(hostname, client, fs)
+	}
+
+	if err != nil {
 		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
 		os.Exit(1)
 	}
