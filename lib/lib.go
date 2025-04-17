@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -84,9 +85,10 @@ func PublishToS3(ctx context.Context, httpClient *http.Client, content string, f
 
 	// Upload content to S3
 	_, err = client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(S3BucketName),
-		Key:    aws.String(filename),
-		Body:   strings.NewReader(content),
+		Bucket:  aws.String(S3BucketName),
+		Key:     aws.String(filename),
+		Body:    strings.NewReader(content),
+		Expires: aws.Time(time.Now().AddDate(1, 0, 0)), // Add 1 year expiration
 	})
 
 	if err != nil {
