@@ -112,8 +112,14 @@ func createAwsNitroAttestation(data []byte) ([]byte, error) {
 		AwsNitroAttestation:    nil,
 	}
 
-	// Run the nsm-cli binary and capture its output
-	cmd := exec.Command("/app/nsm-cli")
+	// Get the command from environment variable or use default
+	cmdPath := os.Getenv("NSM_CLI_PATH")
+	if cmdPath == "" {
+		cmdPath = "/app/nsm-cli"
+	}
+
+	// Run the command and capture its output
+	cmd := exec.Command(cmdPath)
 	cmd.Env = append(cmd.Env, "NSM_USER_DATA="+lib.Base32Encoder.EncodeToString(data))
 	output, err := cmd.Output()
 	log.Printf("nsm-cli output: %#v", output)
@@ -313,7 +319,17 @@ func registerAccount(client *lego.Client, user *MyUser) error {
 }
 
 func saveArtifacts(certificates *certificate.Resource, accountKey *ecdsa.PrivateKey) error {
-	outputDir := "/app/output-keys"
+	if certificates == nil {
+		return fmt.Errorf("certificates cannot be nil")
+	}
+	if accountKey == nil {
+		return fmt.Errorf("account key cannot be nil")
+	}
+
+	outputDir := os.Getenv("OUTPUT_KEYS_DIR")
+	if outputDir == "" {
+		outputDir = "/app/output-keys" // Default value
+	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}

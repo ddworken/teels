@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/ddworken/teels/lib"
 	"github.com/go-acme/lego/v4/certcrypto"
+	"github.com/go-acme/lego/v4/certificate"
 	"github.com/go-acme/lego/v4/registration"
 )
 
@@ -372,6 +374,305 @@ func TestSaveAttestation(t *testing.T) {
 					if err := tt.checkFile(outputPath); err != nil {
 						t.Error(err)
 					}
+				}
+			}
+		})
+	}
+}
+
+func TestLoadOrGenerateAccountKey(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "account-key-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Override the output directory for testing
+	originalOutputDir := "output-keys"
+	defer func() {
+		os.Setenv("OUTPUT_KEYS_DIR", originalOutputDir)
+	}()
+	os.Setenv("OUTPUT_KEYS_DIR", tempDir)
+
+	tests := []struct {
+		name     string
+		setup    func() error
+		checkKey func(*ecdsa.PrivateKey) error
+		wantErr  bool
+	}{
+		{
+			name: "Generate new key",
+			setup: func() error {
+				// No setup needed - will generate new key
+				return nil
+			},
+			checkKey: func(key *ecdsa.PrivateKey) error {
+				if key.Curve != elliptic.P256() {
+					return fmt.Errorf("key curve = %v, want %v", key.Curve, elliptic.P256())
+				}
+				return nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "Load existing key",
+			setup: func() error {
+				// Generate and save a key first
+				key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+				if err != nil {
+					return err
+				}
+
+				keyBytes, err := x509.MarshalECPrivateKey(key)
+				if err != nil {
+					return err
+				}
+
+				keyPem := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
+				return os.WriteFile(filepath.Join(tempDir, "account_key.pem"), keyPem, 0600)
+			},
+			checkKey: func(key *ecdsa.PrivateKey) error {
+				if key.Curve != elliptic.P256() {
+					return fmt.Errorf("key curve = %v, want %v", key.Curve, elliptic.P256())
+				}
+				return nil
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != nil {
+				if err := tt.setup(); err != nil {
+					t.Fatalf("Setup failed: %v", err)
+				}
+			}
+
+			key, err := loadOrGenerateAccountKey()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("loadOrGenerateAccountKey() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && tt.checkKey != nil {
+				if err := tt.checkKey(key); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+	}
+}
+
+func TestSaveArtifacts(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "artifacts-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Override the output directory for testing
+	originalOutputDir := os.Getenv("OUTPUT_KEYS_DIR")
+	defer func() {
+		os.Setenv("OUTPUT_KEYS_DIR", originalOutputDir)
+	}()
+	os.Setenv("OUTPUT_KEYS_DIR", tempDir)
+
+	// Generate test keys and certificate
+	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate account key: %v", err)
+	}
+
+	// Create test certificate
+	cert := &certificate.Resource{
+		Certificate: []byte("test certificate"),
+		PrivateKey:  []byte("test private key"),
+	}
+
+	tests := []struct {
+		name       string
+		cert       *certificate.Resource
+		accountKey *ecdsa.PrivateKey
+		checkFiles func(string) error
+		wantErr    bool
+	}{
+		{
+			name:       "Valid artifacts",
+			cert:       cert,
+			accountKey: accountKey,
+			checkFiles: func(outputDir string) error {
+				// Check account key file
+				accountKeyPath := filepath.Join(outputDir, "account_key.pem")
+				if _, err := os.Stat(accountKeyPath); os.IsNotExist(err) {
+					return fmt.Errorf("account key file does not exist")
+				}
+
+				// Check certificate file
+				certPath := filepath.Join(outputDir, "certificate.crt")
+				if _, err := os.Stat(certPath); os.IsNotExist(err) {
+					return fmt.Errorf("certificate file does not exist")
+				}
+
+				// Check certificate key file
+				certKeyPath := filepath.Join(outputDir, "certificate_key.pem")
+				if _, err := os.Stat(certKeyPath); os.IsNotExist(err) {
+					return fmt.Errorf("certificate key file does not exist")
+				}
+
+				return nil
+			},
+			wantErr: false,
+		},
+		{
+			name:       "Nil certificate",
+			cert:       nil,
+			accountKey: accountKey,
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := saveArtifacts(tt.cert, tt.accountKey)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("saveArtifacts() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && tt.checkFiles != nil {
+				if err := tt.checkFiles(tempDir); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateAwsNitroAttestation(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "attestation-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Override the output directory for testing
+	originalOutputDir := "/app/static/output-attestations"
+	defer func() {
+		os.Setenv("ATTESTATION_OUTPUT_DIR", originalOutputDir)
+	}()
+	os.Setenv("ATTESTATION_OUTPUT_DIR", tempDir)
+
+	// Create a mock command that just echoes the environment variable
+	mockCmdPath := filepath.Join(tempDir, "mock-nsm-cli")
+	mockCmdContent := `#!/bin/sh
+echo "Mock attestation for $NSM_USER_DATA"
+`
+	if err := os.WriteFile(mockCmdPath, []byte(mockCmdContent), 0755); err != nil {
+		t.Fatalf("Failed to create mock command: %v", err)
+	}
+
+	// Override the NSM_CLI_PATH for testing
+	originalNsmCliPath := os.Getenv("NSM_CLI_PATH")
+	defer func() {
+		os.Setenv("NSM_CLI_PATH", originalNsmCliPath)
+	}()
+	os.Setenv("NSM_CLI_PATH", mockCmdPath)
+
+	tests := []struct {
+		name    string
+		data    []byte
+		check   func([]byte) error
+		wantErr bool
+	}{
+		{
+			name: "Valid attestation",
+			data: []byte("test data"),
+			check: func(attestation []byte) error {
+				if len(attestation) == 0 {
+					return fmt.Errorf("attestation is empty")
+				}
+				return nil
+			},
+			wantErr: false,
+		},
+		{
+			name:    "Empty data",
+			data:    []byte{},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attestation, err := createAwsNitroAttestation(tt.data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("createAwsNitroAttestation() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && tt.check != nil {
+				if err := tt.check(attestation); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+	}
+}
+
+func TestCreateFakeAttestation(t *testing.T) {
+	// Create a temporary directory for testing
+	tempDir, err := os.MkdirTemp("", "attestation-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Override the output directory for testing
+	originalOutputDir := "/app/static/output-attestations"
+	defer func() {
+		os.Setenv("ATTESTATION_OUTPUT_DIR", originalOutputDir)
+	}()
+	os.Setenv("ATTESTATION_OUTPUT_DIR", tempDir)
+
+	tests := []struct {
+		name    string
+		data    []byte
+		check   func([]byte) error
+		wantErr bool
+	}{
+		{
+			name: "Valid attestation",
+			data: []byte("test data"),
+			check: func(attestation []byte) error {
+				if len(attestation) == 0 {
+					return fmt.Errorf("attestation is empty")
+				}
+				return nil
+			},
+			wantErr: false,
+		},
+		{
+			name:    "Empty data",
+			data:    []byte{},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attestation, err := createFakeAttestation(tt.data)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("createFakeAttestation() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if !tt.wantErr && tt.check != nil {
+				if err := tt.check(attestation); err != nil {
+					t.Error(err)
 				}
 			}
 		})
