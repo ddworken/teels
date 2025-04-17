@@ -461,7 +461,7 @@ func startBackgroundTcpProxy() error {
 
 	// Bring up the loopback interface and create a virtual interface
 	cmd = exec.Command("ip", "link", "set", "lo", "up")
-	cmd.Run() // Ignore errors for this command since it fails if the interface is already up
+	_ = cmd.Run() // Ignore errors for this command since it fails if the interface is already up
 	cmd = exec.Command("ip", "link", "set", "dev", "lo:0", "up")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to bring up lo:0 interface: %w", err)

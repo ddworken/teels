@@ -1,0 +1,23 @@
+repos:
+  - repo: https://github.com/Bahjat/pre-commit-golang
+    rev: bdba95f94147c2f5da7eda81e15cdd92c41758ba
+    hooks:
+      - id: go-vet
+        exclude: ^vndr/
+      - id: go-static-check # install https://staticcheck.io/docs/
+        exclude: ^vndr/
+      - id: golangci-lint # requires github.com/golangci/golangci-lint
+        exclude: ^vndr/
+  - repo: local
+    hooks:
+      - id: go-errcheck
+        name: go-errcheck
+        entry: errcheck -exclude .errcheck_excludes.txt ./...
+        language: system
+        pass_filenames: false
+        exclude: ^vndr/
+      - id: make-fmt # requires 'go install mvdan.cc/gofumpt@latest' and 'go install github.com/daixiang0/gci@latest'
+        name: make-fmt
+        entry: make fmt
+        language: system
+        exclude: ^vndr/

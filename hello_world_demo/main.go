@@ -46,14 +46,20 @@ func rootHandler(w http.ResponseWriter, req *http.Request) {
 
 		// Print file/directory name with appropriate prefix
 		if info.IsDir() {
-			io.WriteString(w, fmt.Sprintf("%s📁 %s/\n", indent, filepath.Base(path)))
+			if _, err := io.WriteString(w, fmt.Sprintf("%s📁 %s/\n", indent, filepath.Base(path))); err != nil {
+				return err
+			}
 		} else {
-			io.WriteString(w, fmt.Sprintf("%s📄 %s\n", indent, filepath.Base(path)))
+			if _, err := io.WriteString(w, fmt.Sprintf("%s📄 %s\n", indent, filepath.Base(path))); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 	if err != nil {
-		io.WriteString(w, fmt.Sprintf("Error listing files: %v\n", err))
+		if _, err := io.WriteString(w, fmt.Sprintf("Error listing files: %v\n", err)); err != nil {
+			log.Printf("Error writing error message: %v", err)
+		}
 	}
 }
 

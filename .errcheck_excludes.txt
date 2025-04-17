@@ -1,0 +1,9 @@
+(net/http.ResponseWriter).Write
+os.Setenv
+os.Unsetenv
+os.RemoveAll
+(*os.File).Close
+(net.Conn).Close
+(io.ReadCloser).Close
+(*github.com/mdlayher/vsock.Listener).Close
+(*crypto/tls.Conn).Close
