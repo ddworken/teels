@@ -15,7 +15,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -157,7 +156,7 @@ func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 
 	log.Printf("Generated attestation report and saved to: %s", outputPath)
 	log.Printf("Saving attestation to s3...")
-	httpClient, err := gettHttpClient("https://teels-attestations.s3.ap-south-1.amazonaws.com/")
+	httpClient, err := gettHttpClient()
 	if err != nil {
 		log.Printf("[WARN] failed to get HTTP client: %v", err)
 	} else {
@@ -263,7 +262,7 @@ func setupLegoClient(config *Config, accountKey *ecdsa.PrivateKey) (*lego.Client
 	legoConfig := lego.NewConfig(myUser)
 	legoConfig.CADirURL = config.TLSDirectoryURL
 	legoConfig.Certificate.KeyType = config.TLSKeyType
-	legoConfig.HTTPClient, err = gettHttpClient(config.TLSDirectoryURL)
+	legoConfig.HTTPClient, err = gettHttpClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get HTTP client: %w", err)
 	}
@@ -386,21 +385,23 @@ var HOSTNAME_TO_PORT = map[string]string{
 	"teels-attestations.s3.ap-south-1.amazonaws.com": "8003",
 }
 
-// gettHttpClient returns an http.Client that resolves the given URL's hostname to 127.0.0.1:<port> as per HOSTNAME_TO_PORT.
-func gettHttpClient(rawurl string) (*http.Client, error) {
-	parsedUrl, err := url.Parse(rawurl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
-	}
-	hostname := parsedUrl.Hostname()
-	port, ok := HOSTNAME_TO_PORT[hostname]
-	if !ok {
-		return nil, fmt.Errorf("hostname %s not found in HOSTNAME_TO_PORT", hostname)
-	}
-
+// gettHttpClient returns an http.Client that resolves supported hostnames to 127.0.0.1:<port> as per HOSTNAME_TO_PORT.
+func gettHttpClient() (*http.Client, error) {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// Always dial 127.0.0.1:<port> for this hostname
+			// Parse the address to get the hostname
+			host, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse address: %w", err)
+			}
+
+			// Look up the port for this hostname
+			port, ok := HOSTNAME_TO_PORT[host]
+			if !ok {
+				return nil, fmt.Errorf("hostname %s not found in HOSTNAME_TO_PORT", host)
+			}
+
+			// Always dial 127.0.0.1:<port> for supported hostnames
 			return net.Dial("tcp", "127.0.0.1:"+port)
 		},
 	}
