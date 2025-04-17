@@ -61,6 +61,7 @@ COPY --from=nsm-builder /app/nsm-cli/target/release/nsm-cli /app/
 COPY --from=go-builder /enclave-server /app/
 COPY --from=go-builder /app/formatter.html /app/
 COPY --from=go-builder /app/static/ /app/static/
+COPY VERSION /app/static/VERSION
 COPY --from=cert-provisioner-builder /cert-provisioner /app/
 RUN chmod +x /app/cert-provisioner && chmod +x /app/enclave-server
 RUN uname -a
@@ -70,7 +71,7 @@ WORKDIR /app
 
 EXPOSE 8888
 
-ENV LETS_ENCRYPT_ENVIRONMENT=production
+ENV LETS_ENCRYPT_ENVIRONMENT=staging
 ENV LETS_ENCRYPT_EMAIL_ADDRESS=david@daviddworken.com
 ENV VERIFIED_HOST_NAME=verified-spot-dev.daviddworken.com
 
