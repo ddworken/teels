@@ -71,7 +71,7 @@ WORKDIR /app
 
 EXPOSE 8888
 
-ENV LETS_ENCRYPT_ENVIRONMENT=staging
+ENV LETS_ENCRYPT_ENVIRONMENT=production
 ENV LETS_ENCRYPT_EMAIL_ADDRESS=david@daviddworken.com
 ENV VERIFIED_HOST_NAME=verified-spot-dev.daviddworken.com
 
