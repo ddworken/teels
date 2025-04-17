@@ -23,6 +23,33 @@ import (
 	nitro "github.com/veracruz-project/go-nitro-enclave-attestation-document"
 )
 
+// HTTPClient interface for mocking HTTP requests
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// FileSystem interface for mocking file operations
+type FileSystem interface {
+	ReadFile(name string) ([]byte, error)
+	WriteFile(name string, data []byte, perm os.FileMode) error
+	MkdirAll(path string, perm os.FileMode) error
+}
+
+// RealFileSystem implements FileSystem using actual file operations
+type RealFileSystem struct{}
+
+func (fs RealFileSystem) ReadFile(name string) ([]byte, error) {
+	return os.ReadFile(name)
+}
+
+func (fs RealFileSystem) WriteFile(name string, data []byte, perm os.FileMode) error {
+	return os.WriteFile(name, data, perm)
+}
+
+func (fs RealFileSystem) MkdirAll(path string, perm os.FileMode) error {
+	return os.MkdirAll(path, perm)
+}
+
 // EifInfo represents the structure of the eif-info.txt file
 type EifInfo struct {
 	EifVersion   int `json:"EifVersion"`
@@ -58,10 +85,10 @@ const (
 // retrieveExpectedPcrs downloads and processes eif-info.txt files from all available releases
 // TODO: This currently just trusts the PCR values listed on GH releases. Ideally, we would actually
 // validate the sigstore signatures on top of those files.
-func retrieveExpectedPcrs() ([]PcrValues, error) {
+func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error) {
 	var results []PcrValues
 
-	resp, err := httpGetWithRetryAndCaching(githubBaseURL + "/releases")
+	resp, err := httpGetWithRetryAndCaching(githubBaseURL+"/releases", client, fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
@@ -82,7 +109,7 @@ func retrieveExpectedPcrs() ([]PcrValues, error) {
 		}
 
 		url := fmt.Sprintf("https://github.com/ddworken/teels/releases/download/%s/eif-info.txt", release.TagName)
-		resp, err := httpGetWithRetryAndCaching(url)
+		resp, err := httpGetWithRetryAndCaching(url, client, fs)
 		if err != nil {
 			log.Printf("Warning: Failed to fetch %s: %v", release.TagName, err)
 			continue
@@ -120,15 +147,15 @@ func retrieveExpectedPcrs() ([]PcrValues, error) {
 }
 
 // httpGetWithRetryAndCaching performs an HTTP GET request with retry logic and caching
-func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+func httpGetWithRetryAndCaching(url string, client HTTPClient, fs FileSystem) (*http.Response, error) {
+	if err := fs.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
 	cacheKey := fmt.Sprintf("%x", sha256.Sum256([]byte(url)))
 	cachePath := filepath.Join(cacheDir, cacheKey)
 
-	if cachedData, err := os.ReadFile(cachePath); err == nil {
+	if cachedData, err := fs.ReadFile(cachePath); err == nil {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(bytes.NewReader(cachedData)),
@@ -136,7 +163,12 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 	}
 
 	for i := 0; i < maxRetries; i++ {
-		resp, err := http.Get(url)
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err := client.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +181,7 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 			}
 			resp.Body.Close()
 
-			if err := os.WriteFile(cachePath, body, 0644); err != nil {
+			if err := fs.WriteFile(cachePath, body, 0644); err != nil {
 				log.Printf("Warning: failed to cache response: %v", err)
 			}
 
@@ -176,9 +208,9 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 	return nil, fmt.Errorf("max retries (%d) exceeded for URL: %s", maxRetries, url)
 }
 
-func getAttestationBytes(encodedSubdomainPart string) ([]byte, error) {
+func getAttestationBytes(encodedSubdomainPart string, client HTTPClient, fs FileSystem) ([]byte, error) {
 	url := fmt.Sprintf("http://teels-attestations.s3.ap-south-1.amazonaws.com/%s.bin", encodedSubdomainPart)
-	resp, err := httpGetWithRetryAndCaching(url)
+	resp, err := httpGetWithRetryAndCaching(url, client, fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch attestation: %w", err)
 	}
@@ -189,9 +221,9 @@ func getAttestationBytes(encodedSubdomainPart string) ([]byte, error) {
 	return nil, fmt.Errorf("failed to fetch attestation from %s: status code %d", url, resp.StatusCode)
 }
 
-func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
+func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte, client HTTPClient, fs FileSystem) error {
 	encodedSubdomainPart := lib.Base32Encoder.EncodeToString(decodedSubdomainPart)
-	attestationBytes, err := getAttestationBytes(encodedSubdomainPart)
+	attestationBytes, err := getAttestationBytes(encodedSubdomainPart, client, fs)
 	if err != nil {
 		return fmt.Errorf("error getting attestation bytes: %w", err)
 	}
@@ -206,10 +238,10 @@ func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash
 			pubKeyHash, attestation.UnverifiedAttestedData)
 	}
 
-	return validateAwsNitroAttestation(string(attestation.AwsNitroAttestation), attestation.UnverifiedAttestedData)
+	return validateAwsNitroAttestation(string(attestation.AwsNitroAttestation), attestation.UnverifiedAttestedData, client, fs)
 }
 
-func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttestedData []byte) error {
+func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttestedData []byte, client HTTPClient, fs FileSystem) error {
 	if base64EncodedAttestation == "" {
 		return fmt.Errorf("no AWS Nitro attestation data found")
 	}
@@ -219,7 +251,7 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 		return fmt.Errorf("failed to decode AWS Nitro attestation: %w", err)
 	}
 
-	rootCertPEM, err := os.ReadFile("cert_verifier/aws_nitro_root.pem")
+	rootCertPEM, err := fs.ReadFile("cert_verifier/aws_nitro_root.pem")
 	if err != nil {
 		return fmt.Errorf("failed to read AWS Nitro root certificate: %w", err)
 	}
@@ -253,7 +285,7 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 			expectedAttestedData, base32DecodedUserData)
 	}
 
-	expectedPcrs, err := retrieveExpectedPcrs()
+	expectedPcrs, err := retrieveExpectedPcrs(client, fs)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve expected PCR values: %w", err)
 	}
@@ -278,7 +310,7 @@ func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttest
 
 // validateCertificate takes an x509 certificate and performs a series of validations.
 // It returns an error if any validation fails, otherwise nil.
-func validateCertificate(cert *x509.Certificate) error {
+func validateCertificate(cert *x509.Certificate, client HTTPClient, fs FileSystem) error {
 	log.Println("Starting certificate validation...")
 
 	// Get the expected host name from environment variable
@@ -341,7 +373,7 @@ func validateCertificate(cert *x509.Certificate) error {
 
 	// 4. Validate the attestation
 	log.Println("Step 4: Fetching attestation...")
-	err = validateAttestationForPublicKeyHash(decodedSubdomainPart, pubKeyHash[:])
+	err = validateAttestationForPublicKeyHash(decodedSubdomainPart, pubKeyHash[:], client, fs)
 	if err != nil {
 		return fmt.Errorf("failed to validate attestation for public key hash: %w", err)
 	}
@@ -351,8 +383,8 @@ func validateCertificate(cert *x509.Certificate) error {
 	return nil
 }
 
-func verifyFromFile() {
-	certPEM, err := os.ReadFile("output-keys/certificate.crt")
+func verifyFromFile(client HTTPClient, fs FileSystem) {
+	certPEM, err := fs.ReadFile("output-keys/certificate.crt")
 	if err != nil {
 		log.Printf("Error reading certificate file: %v\n", err)
 		os.Exit(1)
@@ -371,7 +403,7 @@ func verifyFromFile() {
 	}
 
 	// Run the validation
-	err = validateCertificate(cert)
+	err = validateCertificate(cert, client, fs)
 	if err != nil {
 		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
 		os.Exit(1)
@@ -381,12 +413,12 @@ func verifyFromFile() {
 }
 
 // queryCTLogs queries the crt.sh API for certificates matching the given domain
-func queryCTLogs(domain string) ([]*x509.Certificate, error) {
+func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certificate, error) {
 	// Construct the crt.sh API URL for initial search
 	url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
 
 	// Make the HTTP request
-	resp, err := httpGetWithRetryAndCaching(url)
+	resp, err := httpGetWithRetryAndCaching(url, client, fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query crt.sh: %w", err)
 	}
@@ -431,7 +463,7 @@ func queryCTLogs(domain string) ([]*x509.Certificate, error) {
 
 		// Fetch the actual certificate using the ID
 		certURL := fmt.Sprintf("https://crt.sh/?d=%d", cert.ID)
-		certResp, err := httpGetWithRetryAndCaching(certURL)
+		certResp, err := httpGetWithRetryAndCaching(certURL, client, fs)
 		if err != nil {
 			log.Printf("Warning: failed to fetch certificate %d: %v", cert.ID, err)
 			continue
@@ -480,7 +512,7 @@ func queryCTLogs(domain string) ([]*x509.Certificate, error) {
 	return x509Certs, nil
 }
 
-func verifyFromHttpsRequest(hostname string) error {
+func verifyFromHttpsRequest(hostname string, client HTTPClient, fs FileSystem) error {
 	// Set up TLS configuration
 	config := &tls.Config{
 		InsecureSkipVerify: true, // We'll verify the certificate ourselves
@@ -503,7 +535,7 @@ func verifyFromHttpsRequest(hostname string) error {
 	cert := state.PeerCertificates[0]
 
 	// Run the validation
-	return validateCertificate(cert)
+	return validateCertificate(cert, client, fs)
 }
 
 func main() {
@@ -512,7 +544,11 @@ func main() {
 		log.Fatal("VERIFIED_HOST_NAME environment variable is not set")
 	}
 
-	if err := verifyFromHttpsRequest(hostname); err != nil {
+	// Create real implementations of dependencies
+	client := &http.Client{}
+	fs := RealFileSystem{}
+
+	if err := verifyFromHttpsRequest(hostname, client, fs); err != nil {
 		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
 		os.Exit(1)
 	}
