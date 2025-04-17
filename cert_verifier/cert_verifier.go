@@ -13,6 +13,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -150,12 +151,21 @@ func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error)
 }
 
 // httpGetWithRetryAndCaching performs an HTTP GET request with retry logic and caching
-func httpGetWithRetryAndCaching(url string, client HTTPClient, fs FileSystem) (*http.Response, error) {
+func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSystem) (*http.Response, error) {
 	if err := fs.MkdirAll(cacheDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
-	cacheKey := fmt.Sprintf("%x", sha256.Sum256([]byte(url)))
+	parsedURL, err := url.Parse(requestUrl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
+	}
+	domain := parsedURL.Hostname()
+	if domain == "" {
+		domain = "unknown"
+	}
+
+	cacheKey := fmt.Sprintf("%s_%x", domain, sha256.Sum256([]byte(requestUrl)))
 	cachePath := filepath.Join(cacheDir, cacheKey)
 
 	if cachedData, err := fs.ReadFile(cachePath); err == nil {
@@ -166,7 +176,7 @@ func httpGetWithRetryAndCaching(url string, client HTTPClient, fs FileSystem) (*
 	}
 
 	for i := 0; i < maxRetries; i++ {
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequest("GET", requestUrl, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -208,7 +218,7 @@ func httpGetWithRetryAndCaching(url string, client HTTPClient, fs FileSystem) (*
 		resp.Body.Close()
 	}
 
-	return nil, fmt.Errorf("max retries (%d) exceeded for URL: %s", maxRetries, url)
+	return nil, fmt.Errorf("max retries (%d) exceeded for URL: %s", maxRetries, requestUrl)
 }
 
 func getAttestationBytes(encodedSubdomainPart string, client HTTPClient, fs FileSystem) ([]byte, error) {
@@ -542,7 +552,36 @@ func verifyFromHttpsRequest(hostname string, client HTTPClient, fs FileSystem) e
 }
 
 func verifyFromCtLog(hostname string, client HTTPClient, fs FileSystem) error {
-	// TODO: Implement CT log verification
+	// Query CT logs for certificates matching the hostname
+	certs, err := queryCTLogs(hostname, client, fs)
+	if err != nil {
+		return fmt.Errorf("failed to query CT logs: %w", err)
+	}
+
+	if len(certs) == 0 {
+		return fmt.Errorf("no certificates found in CT logs for %s", hostname)
+	}
+
+	// Validate all certificates
+	var validationErrors []error
+	for i, cert := range certs {
+		err := validateCertificate(cert, client, fs)
+		if err != nil {
+			validationErrors = append(validationErrors, fmt.Errorf("certificate %d validation failed: %w", i+1, err))
+		}
+	}
+
+	// If any certificates failed validation, return a combined error
+	if len(validationErrors) > 0 {
+		var errorMsg strings.Builder
+		errorMsg.WriteString(fmt.Sprintf("%d of %d certificates failed validation:\n", len(validationErrors), len(certs)))
+		for _, err := range validationErrors {
+			errorMsg.WriteString(fmt.Sprintf("- %v\n", err))
+		}
+		return fmt.Errorf(errorMsg.String())
+	}
+
+	log.Printf("Successfully validated all %d certificates from CT logs", len(certs))
 	return nil
 }
 
