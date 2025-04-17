@@ -161,7 +161,7 @@ func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 	log.Printf("Saving attestation to s3...")
 	httpClient, err := gettHttpClient()
 	if err != nil {
-		log.Printf("[WARN] failed to get HTTP client: %v", err)
+		return nil, fmt.Errorf("[WARN] failed to get HTTP client: %v", err)
 	} else {
 		err = lib.PublishToS3(context.TODO(), httpClient, string(jsonData), filename)
 		if err != nil {
