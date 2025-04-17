@@ -122,7 +122,6 @@ func createAwsNitroAttestation(data []byte) ([]byte, error) {
 	cmd := exec.Command(cmdPath)
 	cmd.Env = append(cmd.Env, "NSM_USER_DATA="+lib.Base32Encoder.EncodeToString(data))
 	output, err := cmd.Output()
-	log.Printf("nsm-cli output: %#v", output)
 	if err != nil {
 		log.Printf("nsm-cli error: %#v", err)
 		return nil, fmt.Errorf("failed to run nsm-cli: %w", err)
