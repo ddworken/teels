@@ -192,15 +192,24 @@ func getAttestationBytes(encodedSubdomainPart string) ([]byte, error) {
 	url := fmt.Sprintf("http://%s/static/output-attestations/%s.bin", hostname, encodedSubdomainPart)
 	resp, err := httpGetWithRetryAndCaching(url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch attestation: %w", err)
+		return nil, fmt.Errorf("failed to fetch attestation from %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch attestation: status code %d", resp.StatusCode)
+	if resp.StatusCode == http.StatusOK {
+		return io.ReadAll(resp.Body)
 	}
 
-	return io.ReadAll(resp.Body)
+	url = fmt.Sprintf("http://teels-attestations.s3.ap-south-1.amazonaws.com/%s.bin", encodedSubdomainPart)
+	resp, err = httpGetWithRetryAndCaching(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch attestation: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		return io.ReadAll(resp.Body)
+	}
+	return nil, fmt.Errorf("failed to fetch attestation from %s: status code %d", url, resp.StatusCode)
 }
 
 func validateAttestationForPublicKeyHash(decodedSubdomainPart []byte, pubKeyHash []byte) error {
