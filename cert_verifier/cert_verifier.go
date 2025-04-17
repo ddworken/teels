@@ -177,31 +177,8 @@ func httpGetWithRetryAndCaching(url string) (*http.Response, error) {
 }
 
 func getAttestationBytes(encodedSubdomainPart string) ([]byte, error) {
-	filePath := filepath.Join("output-attestations", encodedSubdomainPart+".bin")
-
-	attestationBytes, err := os.ReadFile(filePath)
-	if err == nil {
-		return attestationBytes, nil
-	}
-
-	hostname := os.Getenv("VERIFIED_HOST_NAME")
-	if hostname == "" {
-		return nil, fmt.Errorf("VERIFIED_HOST_NAME environment variable is not set")
-	}
-
-	url := fmt.Sprintf("http://%s/static/output-attestations/%s.bin", hostname, encodedSubdomainPart)
+	url := fmt.Sprintf("http://teels-attestations.s3.ap-south-1.amazonaws.com/%s.bin", encodedSubdomainPart)
 	resp, err := httpGetWithRetryAndCaching(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch attestation from %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusOK {
-		return io.ReadAll(resp.Body)
-	}
-
-	url = fmt.Sprintf("http://teels-attestations.s3.ap-south-1.amazonaws.com/%s.bin", encodedSubdomainPart)
-	resp, err = httpGetWithRetryAndCaching(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch attestation: %w", err)
 	}
