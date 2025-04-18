@@ -115,7 +115,7 @@ func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error)
 		}
 
 		url := fmt.Sprintf("https://github.com/ddworken/teels/releases/download/%s/eif-info.txt", release.TagName)
-		resp, err := httpGetWithRetryAndCaching(url, client, fs)
+		resp, err := httpGetWithRetryAndCaching(url, client, fs, 0)
 		if err != nil {
 			log.Printf("Warning: Failed to fetch %s: %v", release.TagName, err)
 			continue
@@ -151,7 +151,7 @@ func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error)
 }
 
 // httpGetWithRetryAndCaching performs an HTTP GET request with retry logic and caching
-func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSystem) (*http.Response, error) {
+func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSystem, ttl time.Duration) (*http.Response, error) {
 	if err := fs.MkdirAll(cacheDir, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -168,11 +168,19 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 	cacheKey := fmt.Sprintf("%s_%x", domain, sha256.Sum256([]byte(requestUrl)))
 	cachePath := filepath.Join(cacheDir, cacheKey)
 
+	// Check if cached file exists and is within TTL
 	if cachedData, err := fs.ReadFile(cachePath); err == nil {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Body:       io.NopCloser(bytes.NewReader(cachedData)),
-		}, nil
+		// Get file info to check modification time
+		fileInfo, err := os.Stat(cachePath)
+		if err == nil {
+			// If TTL is 0 or file is within TTL, return cached data
+			if ttl == 0 || time.Since(fileInfo.ModTime()) < ttl {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(cachedData)),
+				}, nil
+			}
+		}
 	}
 
 	for i := 0; i < maxRetries; i++ {
@@ -223,7 +231,7 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 
 func getAttestationBytes(encodedSubdomainPart string, client HTTPClient, fs FileSystem) ([]byte, error) {
 	url := fmt.Sprintf("http://teels-attestations.s3.ap-south-1.amazonaws.com/%s.bin", encodedSubdomainPart)
-	resp, err := httpGetWithRetryAndCaching(url, client, fs)
+	resp, err := httpGetWithRetryAndCaching(url, client, fs, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch attestation: %w", err)
 	}
@@ -430,8 +438,8 @@ func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certi
 	// Construct the crt.sh API URL for initial search
 	url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
 
-	// Make the HTTP request
-	resp, err := httpGetWithRetryAndCaching(url, client, fs)
+	// Make the HTTP request with 5-minute TTL
+	resp, err := httpGetWithRetryAndCaching(url, client, fs, 5*time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query crt.sh: %w", err)
 	}
@@ -476,7 +484,7 @@ func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certi
 
 		// Fetch the actual certificate using the ID
 		certURL := fmt.Sprintf("https://crt.sh/?d=%d", cert.ID)
-		certResp, err := httpGetWithRetryAndCaching(certURL, client, fs)
+		certResp, err := httpGetWithRetryAndCaching(certURL, client, fs, 0)
 		if err != nil {
 			log.Printf("Warning: failed to fetch certificate %d: %v", cert.ID, err)
 			continue
