@@ -27,8 +27,8 @@ func customFileServer(root http.FileSystem) http.Handler {
 	})
 }
 
-func rootHandler(w http.ResponseWriter, req *http.Request) {
-	fmt.Println("rootHandler")
+func debugHandler(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("debugHandler")
 
 	// Set content type to plain text
 	w.Header().Set("Content-Type", "text/plain")
@@ -76,10 +76,21 @@ func formatterHandler(w http.ResponseWriter, req *http.Request) {
 	http.ServeFile(w, req, "/app/formatter.html")
 }
 
+func rootHandler(w http.ResponseWriter, req *http.Request) {
+	// Only redirect if the path is exactly "/"
+	if req.URL.Path == "/" {
+		http.Redirect(w, req, "/formatter", http.StatusMovedPermanently)
+		return
+	}
+	// For any other path, return 404
+	http.NotFound(w, req)
+}
+
 func main() {
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", rootHandler)
+	mux.HandleFunc("/debug", debugHandler)
 	mux.HandleFunc("/formatter", formatterHandler)
 
 	// Serve static files with custom MIME type handling to fix a strict mime type checking error
