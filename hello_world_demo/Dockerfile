@@ -60,6 +60,7 @@ RUN apk add --no-cache socat
 COPY --from=nsm-builder /app/nsm-cli/target/release/nsm-cli /app/
 COPY --from=go-builder /enclave-server /app/
 COPY --from=go-builder /app/formatter.html /app/
+COPY --from=go-builder /app/diffchecker.html /app/
 COPY --from=go-builder /app/static/ /app/static/
 COPY VERSION /app/static/VERSION
 COPY --from=cert-provisioner-builder /cert-provisioner /app/
