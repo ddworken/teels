@@ -404,35 +404,6 @@ func validateCertificate(cert *x509.Certificate, client HTTPClient, fs FileSyste
 	return nil
 }
 
-func verifyFromFile(client HTTPClient, fs FileSystem) {
-	certPEM, err := fs.ReadFile("output-keys/certificate.crt")
-	if err != nil {
-		log.Printf("Error reading certificate file: %v\n", err)
-		os.Exit(1)
-	}
-
-	block, _ := pem.Decode(certPEM)
-	if block == nil || block.Type != "CERTIFICATE" {
-		log.Println("Error: Failed to decode PEM block containing certificate")
-		return
-	}
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		log.Printf("Error parsing certificate: %v\n", err)
-		return
-	}
-
-	// Run the validation
-	err = validateCertificate(cert, client, fs)
-	if err != nil {
-		log.Printf("\n--- Certificate Validation FAILED ---\nError: %v\n", err)
-		os.Exit(1)
-	} else {
-		log.Println("\n--- Certificate Validation SUCCEEDED ---")
-	}
-}
-
 // queryCTLogs queries the crt.sh API for certificates matching the given domain
 func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certificate, error) {
 	// Construct the crt.sh API URL for initial search
@@ -586,7 +557,7 @@ func verifyFromCtLog(hostname string, client HTTPClient, fs FileSystem) error {
 		for _, err := range validationErrors {
 			errorMsg.WriteString(fmt.Sprintf("- %v\n", err))
 		}
-		return fmt.Errorf(errorMsg.String())
+		return fmt.Errorf("%s", errorMsg.String())
 	}
 
 	log.Printf("Successfully validated all %d certificates from CT logs", len(certs))
