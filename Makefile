@@ -17,7 +17,7 @@ nitro-stop:
 # Download and run the production EIF from GHCR
 # To specify a version: make prod-run VERSION_OVERRIDE=42
 prod-run: nitro-stop share-aws-creds
-	rm hello_nitro.eif || true
+	rm -f hello_nitro.eif || true
 	curl -L -o hello_nitro.eif https://github.com/ddworken/teels/releases/download/v0.$${VERSION_OVERRIDE:-$$(cat VERSION)}/enclave.eif
 	nitro-cli run-enclave --eif-path hello_nitro.eif --memory 2048 --cpu-count 1 --enclave-cid 16
 
