@@ -1,0 +1,244 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 30px;
+    background-color: #f8f9fa;
+    color: #212529;
+    line-height: 1.6;
+}
+
+h1 {
+    text-align: center;
+    color: #343a40;
+    margin-bottom: 40px;
+    font-weight: 300;
+    font-size: 2.5em;
+}
+
+.container {
+    display: flex;
+    justify-content: space-between;
+    gap: 30px;
+    margin-bottom: 30px;
+}
+
+.input-panel {
+    flex: 1;
+    background-color: #ffffff;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    border: 1px solid #dee2e6;
+}
+
+.input-panel h2 {
+    margin-top: 0;
+    font-size: 1.25em;
+    color: #495057;
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+    font-weight: 500;
+}
+
+textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 0.9em;
+    resize: vertical;
+    min-height: 250px;
+    line-height: 1.5;
+}
+
+textarea:focus {
+    outline: none;
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+button#diffButton {
+    display: block;
+    margin: 30px auto;
+    padding: 12px 30px;
+    font-size: 1.1em;
+    font-weight: 500;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+}
+
+button#diffButton:hover {
+    background-color: #0056b3;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+button#diffButton:active {
+    transform: translateY(0px);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.options {
+    text-align: center;
+    margin-bottom: 30px;
+    font-size: 0.95em;
+    color: #495057;
+}
+
+.options label {
+    cursor: pointer;
+    margin-left: 5px;
+}
+
+.options input[type="checkbox"] {
+    margin-right: 8px;
+    vertical-align: middle;
+    transform: scale(1.1);
+}
+
+.diff-output {
+    background-color: #ffffff;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.07);
+    margin-top: 30px;
+    border: 1px solid #dee2e6;
+}
+
+.diff-output h2 {
+    margin-top: 0;
+    font-size: 1.25em;
+    color: #495057;
+    border-bottom: 1px solid #e9ecef;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+    font-weight: 500;
+    text-align: center;
+}
+
+/* Side-by-Side Diff Container Styling */
+.diff-container {
+    display: flex;
+    flex-direction: row; /* Explicitly set row direction */
+    gap: 0; /* No gap, border handles separation */
+    border: 1px solid #dee2e6; /* Border around the whole diff */
+    border-radius: 6px;
+    overflow: hidden; /* Ensure child borders don't overlap */
+    background-color: #f8f9fa; /* Background for the container */
+    width: 100%; /* Ensure full width */
+}
+
+.diff-pane {
+    flex: 1 1 50%; /* Each pane takes half the space, allows shrinking */
+    display: flex; /* Use flex for line numbers + content */
+    flex-direction: row; /* Explicitly set row direction */
+    background-color: #ffffff; /* Pane background */
+    min-width: 0; /* Prevent flex item overflow */
+    max-width: 50%; /* Ensure each pane is exactly half */
+}
+
+/* Add border between panes */
+.diff-pane#left-pane {
+    border-right: 1px solid #dee2e6;
+}
+
+.diff-pane h3 {
+    display: none; /* Hide the Original/Changed H3, use main H2 */
+}
+
+.linenumbers {
+    background-color: #e9ecef; /* Slightly darker grey background for numbers */
+    padding: 10px 8px;
+    text-align: right;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 0.85em;
+    color: #6c757d; /* Dimmer color for numbers */
+    user-select: none; /* Prevent selecting line numbers */
+    white-space: pre; /* Keep line breaks */
+    flex-shrink: 0; /* Prevent line numbers from shrinking */
+    border-right: 1px solid #dee2e6; /* Separator line */
+}
+
+.linenumbers div {
+    min-height: 1.5em; /* Match pre line-height */
+    line-height: 1.5;  /* Match pre line-height */
+    box-sizing: border-box; /* Include padding/border in height */
+}
+
+/* Style the <pre> elements within the panes */
+.diff-pane pre {
+    flex-grow: 1;
+    margin: 0;
+    padding: 10px 12px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9em;
+    line-height: 1.5;
+    color: #212529;
+    background-color: #ffffff;
+    border: none;
+    border-radius: 0;
+    overflow-x: auto; /* Add scrollbars if content overflows */
+    box-sizing: border-box;
+}
+
+/* Styling for placeholder, inserted, deleted lines within pre */
+.diff-pane pre div {
+    min-height: 1.5em; /* Ensure empty lines take up space */
+    line-height: 1.5;  /* Ensure alignment */
+    box-sizing: border-box;
+    width: 100%; /* Ensure background colors span full width */
+    padding: 0 2px; /* Small horizontal padding for highlights */
+    margin: 0 -2px; /* Counteract padding to align text */
+}
+
+.diff-placeholder {
+    background-color: #f8f9fa; /* Subtle background for empty space */
+}
+
+.linenumbers .diff-placeholder {
+    background-color: #e9ecef; /* Match line number background */
+    color: transparent; /* Hide line number */
+}
+
+.diff-deleted {
+    background-color: #ffe3e6; /* Lighter red background for the line */
+}
+
+.linenumbers .diff-deleted {
+     background-color: #f8d7da; /* Slightly darker red for line number background */
+}
+
+.diff-inserted {
+    background-color: #d4edda; /* Lighter green background for the line */
+}
+
+.linenumbers .diff-inserted {
+     background-color: #c3e6cb; /* Slightly darker green for line number background */
+}
+
+/* Character-level diff styling */
+ins {
+    background-color: #a6f5b4; /* More vibrant green */
+    color: #155724;
+    text-decoration: none;
+    /* padding: 0.1em 0; /* Minimal vertical padding */
+    border-radius: 3px;
+}
+
+del {
+    background-color: #f5a6b4; /* More vibrant red */
+    color: #721c24;
+    text-decoration: line-through;
+    /* padding: 0.1em 0; */
+    border-radius: 3px;
+} 

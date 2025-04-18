@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Diff Checker</title>
+    <link rel="stylesheet" href="/static/diffchecker.css">
+</head>
+<body>
+    <h1>Text Diff Checker</h1>
+    <div class="container">
+        <div class="input-panel">
+            <h2>Original Text</h2>
+            <textarea id="text1" rows="15" placeholder="Paste original text here..."></textarea>
+        </div>
+        <div class="input-panel">
+            <h2>Changed Text</h2>
+            <textarea id="text2" rows="15" placeholder="Paste changed text here..."></textarea>
+        </div>
+    </div>
+    <button id="diffButton">Find Differences</button>
+    <div class="options">
+        <label>
+            <input type="checkbox" id="ignoreWhitespaceCheckbox"> Ignore Whitespace Changes
+        </label>
+    </div>
+    <div class="diff-output">
+        <h2>Differences (Side-by-Side)</h2>
+        <div class="diff-container">
+            <div class="diff-pane" id="left-pane">
+                <h3>Original</h3>
+                <div class="linenumbers" id="linenumbers-left"></div>
+                <pre id="output-left"></pre>
+            </div>
+            <div class="diff-pane" id="right-pane">
+                <h3>Changed</h3>
+                <div class="linenumbers" id="linenumbers-right"></div>
+                <pre id="output-right"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/diff-match-patch.min.js"></script>
+    <script src="/static/diffchecker.js"></script>
+</body>
+</html> 
