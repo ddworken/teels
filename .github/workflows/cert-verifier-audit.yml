@@ -1,0 +1,32 @@
+name: Cert Verifier Audit
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # Run every hour
+  workflow_dispatch:  # Allow manual runs
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.22'
+      
+      - name: Check if host is up
+        id: check-host
+        run: |
+          if curl -s -o /dev/null -w "%{http_code}" https://verified-spot-dev.daviddworken.com | grep -q "200"; then
+            echo "host_up=true" >> $GITHUB_OUTPUT
+          else
+            echo "host_up=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run cert verifier audit
+        if: steps.check-host.outputs.host_up == 'true'
+        env:
+          VERIFIED_HOST_NAME: verified-spot-dev.daviddworken.com
+        run: go run cert_verifier/cert_verifier.go audit 
