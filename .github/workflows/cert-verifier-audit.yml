@@ -24,7 +24,7 @@ jobs:
       - name: Check if host is up
         id: check-host
         run: |
-          if curl -s -o /dev/null -w "%{http_code}" https://verified-spot-dev.daviddworken.com | grep -q "200"; then
+          if curl -s -o /dev/null -w "%{http_code}" https://verified-spot-dev.daviddworken.com/formatter | grep -q "200"; then
             echo "host_up=true" >> $GITHUB_OUTPUT
           else
             echo "host_up=false" >> $GITHUB_OUTPUT
