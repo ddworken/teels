@@ -77,9 +77,7 @@ EXPOSE 8888
 
 ENV LETS_ENCRYPT_ENVIRONMENT=production
 ENV LETS_ENCRYPT_EMAIL_ADDRESS=david@daviddworken.com
-ENV VERIFIED_HOST_NAME=verified-dev.teels.dev
+ENV VERIFIED_HOST_NAME=verified.teels.dev
 ENV AWS_NITRO=true
 
 CMD [ "/app/cert-provisioner"]
-# CMD [ "/app/cert-provisioner", "/app/enclave-server" ]
-# CMD [ "/app/enclave-server" ]
