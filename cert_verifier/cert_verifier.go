@@ -183,6 +183,7 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 		}
 	}
 
+	var lastErr error
 	for i := 0; i < maxRetries; i++ {
 		req, err := http.NewRequest("GET", requestUrl, nil)
 		if err != nil {
@@ -191,6 +192,16 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 
 		resp, err := client.Do(req)
 		if err != nil {
+			// Check if this is a network error that should be retried
+			if isNetworkError(err) {
+				lastErr = err
+				delay := baseDelay * time.Duration(1<<i)
+				jitter := time.Duration(rand.Float64() * 0.5 * float64(delay))
+				waitTime := min(delay+jitter, maxDelay)
+				log.Printf("Network error occurred, waiting %v before retry %d/%d: %v", waitTime, i+1, maxRetries, err)
+				time.Sleep(waitTime)
+				continue
+			}
 			return nil, err
 		}
 
@@ -226,7 +237,33 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 		resp.Body.Close()
 	}
 
+	if lastErr != nil {
+		return nil, fmt.Errorf("max retries (%d) exceeded for URL: %s, last error: %w", maxRetries, requestUrl, lastErr)
+	}
 	return nil, fmt.Errorf("max retries (%d) exceeded for URL: %s", maxRetries, requestUrl)
+}
+
+// isNetworkError checks if the error is a network-related error that should be retried
+func isNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Check for common network errors
+	switch {
+	case strings.Contains(err.Error(), "i/o timeout"):
+		return true
+	case strings.Contains(err.Error(), "connection refused"):
+		return true
+	case strings.Contains(err.Error(), "connection reset"):
+		return true
+	case strings.Contains(err.Error(), "no such host"):
+		return true
+	case strings.Contains(err.Error(), "network is unreachable"):
+		return true
+	default:
+		return false
+	}
 }
 
 func getAttestationBytes(encodedSubdomainPart string, client HTTPClient, fs FileSystem) ([]byte, error) {
