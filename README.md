@@ -30,3 +30,8 @@ Note: For cost savings reasons, the demo instance is hosted on an AWS Spot insta
 ## TODO
 
 This is currently prototype-quality code that is not production ready. Before using for a production system, it should be carefully audited and improved from both security and reliability POVs.
+
+From a security POV, there are a number of places where this could be improved:
+
+1. Rather than relying on crt.sh for querying CT logs, this code could directly consume CT logs
+2. Rather than pulling allowed PCRs for GitHub releases, this code could check the accompanying sigstore signatures
