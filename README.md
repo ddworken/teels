@@ -13,6 +13,4 @@ Teels is a portmanteau of TEE and TLS that allows binding a TLS cert to a TEE at
 
 ## TODO
 
-This is currently prototype-quality code that is not at all production ready. Before using for a production system, it should be carefully audited and improved. 
-
-From a functionality POV, the main pending TODO is finishing the crt.sh integration for CT-log based auditing. This will require creating infra for publishing attestations (likely to an S3 bucket?) rather than relying on the in-instance code to host them.
+This is currently prototype-quality code that is not production ready. Before using for a production system, it should be carefully audited and improved from both security and reliability POVs.
