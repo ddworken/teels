@@ -13,7 +13,19 @@ Teels is a portmanteau of TEE and TLS that allows binding a TLS cert to a TEE at
 
 ## Demo Instance
 
+A demo instance with some useful tools is available at [`verified.teels.dev`](https://verified.teels.dev). To audit the TLS certs for this hostname and ensure they're all bound to code in this repo, run:
 
+```
+VERIFIED_HOST_NAME=verified.teels.dev go run cert_verifier/cert_verifier.go audit
+```
+
+If you'd like to check the live certificate (which may not be live in CT logs yet), run:
+
+```
+VERIFIED_HOST_NAME=verified.teels.dev go run cert_verifier/cert_verifier.go live
+```
+
+Note: For cost savings reasons, the demo instance is hosted on an AWS Spot instance, so it may have intermittent downtime.
 
 ## TODO
 
