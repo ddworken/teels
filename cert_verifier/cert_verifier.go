@@ -200,19 +200,19 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 				resp.Body.Close()
 				return nil, fmt.Errorf("failed to read response body: %w", err)
 			}
-			resp.Body.Close()
 
 			if err := fs.WriteFile(cachePath, body, 0o644); err != nil {
 				log.Printf("Warning: failed to cache response: %v", err)
 			}
 
+			resp.Body.Close()
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(bytes.NewReader(body)),
 			}, nil
 		}
 
-		if resp.StatusCode != http.StatusTooManyRequests {
+		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusServiceUnavailable {
 			resp.Body.Close()
 			return resp, nil
 		}
@@ -221,7 +221,7 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 		jitter := time.Duration(rand.Float64() * 0.5 * float64(delay))
 		waitTime := min(delay+jitter, maxDelay)
 
-		log.Printf("Received 429 response, waiting %v before retry %d/%d", waitTime, i+1, maxRetries)
+		log.Printf("Received %d response, waiting %v before retry %d/%d", resp.StatusCode, waitTime, i+1, maxRetries)
 		time.Sleep(waitTime)
 		resp.Body.Close()
 	}
