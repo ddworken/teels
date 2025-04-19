@@ -27,6 +27,7 @@ RUN go mod download
 # Copy the source code and static files
 COPY hello_world_demo/main.go ./
 COPY hello_world_demo/formatter.html ./
+COPY hello_world_demo/diffchecker.html ./
 COPY hello_world_demo/static/ ./static/
 
 # Build the Go application
