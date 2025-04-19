@@ -27,6 +27,7 @@ RUN go mod download
 # Copy the source code and static files
 COPY hello_world_demo/main.go ./
 COPY hello_world_demo/formatter.html ./
+COPY hello_world_demo/index.html ./
 COPY hello_world_demo/diffchecker.html ./
 COPY hello_world_demo/static/ ./static/
 
@@ -62,6 +63,7 @@ COPY --from=nsm-builder /app/nsm-cli/target/release/nsm-cli /app/
 COPY --from=go-builder /enclave-server /app/
 COPY --from=go-builder /app/formatter.html /app/
 COPY --from=go-builder /app/diffchecker.html /app/
+COPY --from=go-builder /app/index.html /app/
 COPY --from=go-builder /app/static/ /app/static/
 COPY VERSION /app/static/VERSION
 COPY --from=cert-provisioner-builder /cert-provisioner /app/
