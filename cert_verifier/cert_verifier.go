@@ -410,7 +410,7 @@ func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certi
 	url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
 
 	// Make the HTTP request with 5-minute TTL
-	resp, err := httpGetWithRetryAndCaching(url, client, fs, 5*time.Minute)
+	resp, err := httpGetWithRetryAndCaching(url, client, fs, time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query crt.sh: %w", err)
 	}
@@ -450,6 +450,16 @@ func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certi
 		}
 		if notAfter.Before(now) {
 			log.Printf("Skipping expired certificate %d (expired on %s)", cert.ID, notAfter.Format(time.RFC3339))
+			continue
+		}
+		if cert.ID == 17932444438 {
+			// TODO(ddworken): Remove this once this cert has expired. This is a wildcard cert that
+			// was issued by cloudflare when I registered the domain teels.dev. Annoyingly, CF issues
+			// a wildcart cert for newly registered domains even if you aren't using them proxying. I
+			// disabled this so no more certs should be issued, but sadly I can't un-issue this one. I
+			// did manually revoke it which helps somewhat, but TLS revocation is quite imperfect so I
+			// don't want cert_verifier to always allow revoked certs. So instead, we just skip this one
+			// cert since this is a demo service.
 			continue
 		}
 
@@ -498,7 +508,7 @@ func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certi
 	}
 
 	if len(x509Certs) == 0 {
-		return nil, fmt.Errorf("no valid unexpired certificates found in CT logs")
+		log.Printf("no valid unexpired certificates found in CT logs")
 	}
 
 	return x509Certs, nil
@@ -532,6 +542,7 @@ func verifyFromHttpsRequest(hostname string, client HTTPClient, fs FileSystem) e
 
 func verifyFromCtLog(hostname string, client HTTPClient, fs FileSystem) error {
 	// Query CT logs for certificates matching the hostname
+	log.Printf("Querying CT logs for certs matching %s", hostname)
 	certs, err := queryCTLogs(hostname, client, fs)
 	if err != nil {
 		return fmt.Errorf("failed to query CT logs: %w", err)
@@ -558,6 +569,43 @@ func verifyFromCtLog(hostname string, client HTTPClient, fs FileSystem) error {
 			errorMsg.WriteString(fmt.Sprintf("- %v\n", err))
 		}
 		return fmt.Errorf("%s", errorMsg.String())
+	}
+
+	// Also check that there aren't any wildcard certs that cover the parent domain
+	log.Printf("Checking for wildcard certificates that cover %s", hostname)
+	parts := strings.Split(hostname, ".")
+	if len(parts) <= 1 {
+		return fmt.Errorf("hostname '%s' doesn't have enough parts to extract a parent domain", hostname)
+	}
+	// Remove the leftmost subdomain and create the parent domain name
+	parentDomain := strings.Join(parts[1:], ".")
+	wildcardHostname := "*." + parentDomain
+	wildcardCerts, err := queryCTLogs(wildcardHostname, client, fs)
+	if err != nil {
+		log.Printf("Warning: failed to query CT logs for wildcard certificates: %v", err)
+	} else if len(wildcardCerts) > 0 {
+		// Filter to only include certificates that are currently valid
+		now := time.Now()
+		var validWildcardCerts []*x509.Certificate
+		for _, cert := range wildcardCerts {
+			if now.After(cert.NotBefore) && now.Before(cert.NotAfter) {
+				validWildcardCerts = append(validWildcardCerts, cert)
+			}
+		}
+
+		if len(validWildcardCerts) > 0 {
+			var certInfos []string
+			for _, cert := range validWildcardCerts {
+				certInfos = append(certInfos, fmt.Sprintf("Subject: %s, Issuer: %s, Valid until: %s",
+					cert.Subject.CommonName,
+					cert.Issuer.CommonName,
+					cert.NotAfter.Format(time.RFC3339)))
+			}
+			return fmt.Errorf("found %d valid wildcard certificates for *.%s which poses a security risk:\n%s",
+				len(validWildcardCerts),
+				parentDomain,
+				strings.Join(certInfos, "\n"))
+		}
 	}
 
 	log.Printf("Successfully validated all %d certificates from CT logs", len(certs))
