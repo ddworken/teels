@@ -3,3 +3,4 @@ output-attestations/
 target/
 *.eif
 main
+.DS_Store

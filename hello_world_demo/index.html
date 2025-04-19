@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teels - TEE + TLS for the Web</title>
+    <style>
+        :root {
+            --primary: #3498db;
+            --secondary: #2c3e50;
+            --light: #ecf0f1;
+            --dark: #2c3e50;
+            --success: #2ecc71;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            line-height: 1.6;
+            color: var(--dark);
+            background-color: var(--light);
+        }
+        
+        p {
+            margin-bottom: 1.5rem;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            padding: 2rem 0;
+            text-align: center;
+            background-color: var(--secondary);
+            color: white;
+        }
+        
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .intro {
+            margin: 3rem 0;
+            padding: 2rem;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .intro ol {
+            margin-left: 2rem;
+            padding-bottom: 1rem;
+        }
+        
+        .tools {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 3rem 0;
+        }
+        
+        .tool-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .tool-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+        }
+        
+        .tool-header {
+            padding: 1.5rem;
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .tool-header h3 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .tool-body {
+            padding: 1.5rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
+        
+        .tool-body p {
+            margin-bottom: 1rem;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 0.8rem 1.5rem;
+            margin-top: auto;
+            background-color: var(--primary);
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.3s ease;
+            font-weight: 500;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+        }
+        
+        .github-link {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        
+        .github-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Teels</h1>
+            <p>TEE + TLS for Verifiable Web Applications</p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <section class="intro">
+            <h2>About Teels</h2>
+            <p>
+                Teels (TEE + TLS) offers a pragmatic solution for creating verifiable web applications using today's web infrastructure.
+                It solves the fundamental trust issue where users have no reliable way to verify they're running the exact code the developer claims.
+            </p>
+            <p>
+                How it works:
+            </p>
+            <ol>
+                <li>Applications run inside a Trusted Execution Environment (TEE), generating a cryptographic attestation at startup</li>
+                <li>The attestation is hashed and encoded in a subdomain name</li>
+                <li>A TLS certificate covers both the application domain and the encoded subdomain</li>
+                <li>Browsers connect normally with standard TLS certificate validation</li>
+                <li>Independent auditors monitor Certificate Transparency logs to verify certificates are bound to valid attestations</li>
+            </ol>
+            <p>
+                This gives users strong guarantees about the code they're running without requiring any changes to browsers or web standards.
+            </p>
+            <p>
+                For more information, see <a href="https://blog.daviddworken.com/posts/teels/">this blog post</a> and <a href="https://github.com/ddworken/teels">the project on GitHub</a>.
+            </p>
+        </section>
+        
+        <section class="tools">
+            <div class="tool-card">
+                <div class="tool-header">
+                    <h3>Code Formatter</h3>
+                </div>
+                <div class="tool-body">
+                    <p>Format and beautify your HTML, JS, and JSON with this easy-to-use tool.</p>
+                    <a href="/formatter" class="btn">Open Formatter</a>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-header">
+                    <h3>Diff Checker</h3>
+                </div>
+                <div class="tool-body">
+                    <p>Compare two texts side by side and highlight the differences between them.</p>
+                    <a href="/diffchecker" class="btn">Open Diff Checker</a>
+                </div>
+            </div>
+            
+            <div class="tool-card">
+                <div class="tool-header">
+                    <h3>CyberChef</h3>
+                </div>
+                <div class="tool-body">
+                    <p>A web app for encryption, encoding, compression and data analysis. The Swiss Army knife of data manipulation.</p>
+                    <a href="/cyberchef" class="btn">Open CyberChef</a>
+                </div>
+            </div>
+        </section>
+    </div>
+    
+    <footer>
+        <div class="container">
+            <p>
+                Teels Demo Application - <a href="https://github.com/ddworken/teels" class="github-link" target="_blank">View on GitHub</a>
+                <br>
+                <img src="https://github.com/ddworken/teels/actions/workflows/cert-verifier-audit.yml/badge.svg" alt="Cert Verifier Audit" />
+            </p>
+        </div>
+    </footer>
+</body>
+</html> 

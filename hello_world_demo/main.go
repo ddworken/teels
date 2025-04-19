@@ -103,6 +103,19 @@ func formatterHandler(w http.ResponseWriter, req *http.Request) {
 	http.ServeFile(w, req, filepath.Join(baseDir, "formatter.html"))
 }
 
+func cyberchefHandler(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("cyberchefHandler")
+
+	// Check if the request is HTTP and redirect to HTTPS if needed
+	if req.TLS == nil && req.Header.Get("X-Forwarded-Proto") != "https" && isNitroEnvironment() {
+		httpsURL := "https://" + req.Host + req.URL.Path
+		http.Redirect(w, req, httpsURL, http.StatusMovedPermanently)
+		return
+	}
+
+	http.Redirect(w, req, "/static/cyberchef/index.html", http.StatusMovedPermanently)
+}
+
 // Add a handler for the new diff checker page
 func diffCheckerHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("diffCheckerHandler")
@@ -118,9 +131,16 @@ func diffCheckerHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func rootHandler(w http.ResponseWriter, req *http.Request) {
-	// Only redirect if the path is exactly "/"
+	// Only serve index.html if the path is exactly "/"
 	if req.URL.Path == "/" {
-		http.Redirect(w, req, "/formatter", http.StatusMovedPermanently)
+		// Check if the request is HTTP and redirect to HTTPS if needed
+		if req.TLS == nil && req.Header.Get("X-Forwarded-Proto") != "https" && isNitroEnvironment() {
+			httpsURL := "https://" + req.Host + req.URL.Path
+			http.Redirect(w, req, httpsURL, http.StatusMovedPermanently)
+			return
+		}
+
+		http.ServeFile(w, req, filepath.Join(baseDir, "index.html"))
 		return
 	}
 	// For any other path, return 404
@@ -133,6 +153,7 @@ func main() {
 	mux.HandleFunc("/", rootHandler)
 	mux.HandleFunc("/debug", debugHandler)
 	mux.HandleFunc("/formatter", formatterHandler)
+	mux.HandleFunc("/cyberchef", cyberchefHandler)
 	mux.HandleFunc("/diffchecker", diffCheckerHandler)
 
 	// Serve static files with custom MIME type handling to fix a strict mime type checking error
