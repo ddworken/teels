@@ -18,13 +18,13 @@ jobs:
 
       - name: Run cert verifier audit
         env:
-          VERIFIED_HOST_NAME: verified-spot-dev.daviddworken.com
+          VERIFIED_HOST_NAME: verified-dev.teels.dev
         run: go run cert_verifier/cert_verifier.go audit 
       
       - name: Check if host is up
         id: check-host
         run: |
-          if curl -s -o /dev/null -w "%{http_code}" https://verified-spot-dev.daviddworken.com/formatter | grep -q "200"; then
+          if curl -s -o /dev/null -w "%{http_code}" https://verified-dev.teels.dev/formatter | grep -q "200"; then
             echo "host_up=true" >> $GITHUB_OUTPUT
           else
             echo "host_up=false" >> $GITHUB_OUTPUT
@@ -33,5 +33,5 @@ jobs:
       - name: Run cert verifier live check
         if: steps.check-host.outputs.host_up == 'true'
         env:
-          VERIFIED_HOST_NAME: verified-spot-dev.daviddworken.com
+          VERIFIED_HOST_NAME: verified-dev.teels.dev
         run: go run cert_verifier/cert_verifier.go live 
