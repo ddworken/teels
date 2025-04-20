@@ -514,7 +514,7 @@ func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certi
 	}
 
 	if len(x509Certs) == 0 {
-		log.Printf("no valid unexpired certificates found in CT logs")
+		log.Printf("no valid unexpired certificates found in CT logs for %s", domain)
 	}
 
 	return x509Certs, nil
