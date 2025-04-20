@@ -245,11 +245,15 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
             padding: 10px;
             border-radius: 3px;
             overflow-x: auto;
+            max-width: 100%;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         table {
             width: 100%;
             border-collapse: collapse;
             margin: 10px 0;
+            table-layout: fixed;
         }
         th, td {
             padding: 8px;
@@ -258,6 +262,11 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
         }
         th {
             background-color: #f5f5f5;
+        }
+        td pre {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 0;
         }
     </style>
 </head>
@@ -341,6 +350,9 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
             padding: 10px;
             border-radius: 3px;
             overflow-x: auto;
+            max-width: 100%;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
     </style>
 </head>
