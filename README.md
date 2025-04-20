@@ -9,7 +9,7 @@ Teels is a portmanteau of TEE and TLS that allows binding a TLS cert to a TEE at
 3. Update the DNS records for your application domain and all subdomains (i.e. `verified.teels.dev` and `*.verified.teels.dev`) to point to your Nitro instance.
 4. From the EC2 instance, run `make configure` to install the various dependencies required for teels
 5. Run `make prod-run` to start up an instance of the code in `hello_world_demo/` to host a basic hello-world type server in a TEE with a variety of demo utility pages. This service can easily be swapped out for any HTTP service that can run inside of a container.
-6. From another machine, run `VERIFIED_HOST_NAME=verified-dev.teels.dev go run cert_verifier/cert_verifier.go` to verify the TLS cert for your newly hosted TLS instance. 
+6. From another machine, run `VERIFIED_HOST_NAME=verified.teels.dev go run cert_verifier/cert_verifier.go` to verify the TLS cert for your newly hosted TLS instance. 
 
 ## Demo Instance
 
