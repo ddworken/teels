@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net"
@@ -130,6 +131,99 @@ func diffCheckerHandler(w http.ResponseWriter, req *http.Request) {
 	http.ServeFile(w, req, filepath.Join(baseDir, "diffchecker.html"))
 }
 
+func attestationHandler(w http.ResponseWriter, req *http.Request) {
+	fmt.Println("attestationHandler")
+
+	// Check if the request is HTTP and redirect to HTTPS if needed
+	if req.TLS == nil && req.Header.Get("X-Forwarded-Proto") != "https" && isNitroEnvironment() {
+		httpsURL := "https://" + req.Host + req.URL.Path
+		http.Redirect(w, req, httpsURL, http.StatusMovedPermanently)
+		return
+	}
+
+	// Read version file
+	version := "N/A"
+	versionBytes, err := os.ReadFile(filepath.Join(baseDir, "static", "VERSION"))
+	if err == nil {
+		version = strings.TrimSpace(string(versionBytes))
+	}
+
+	// Read attestation file
+	attestation := "N/A"
+	attestationDir := filepath.Join(baseDir, "static", "output-attestations")
+	files, err := os.ReadDir(attestationDir)
+	if err == nil && len(files) > 0 {
+		attestationBytes, err := os.ReadFile(filepath.Join(attestationDir, files[0].Name()))
+		if err == nil {
+			attestation = string(attestationBytes)
+		}
+	}
+
+	// Set content type to HTML
+	w.Header().Set("Content-Type", "text/html")
+
+	// Define template data
+	data := struct {
+		Version     string
+		Attestation string
+	}{
+		Version:     version,
+		Attestation: attestation,
+	}
+
+	// Create and parse template
+	tmpl := template.Must(template.New("attestation").Parse(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teels Attestation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="section">
+        <h2>Github Link</h2>
+        <p><a href="https://github.com/ddworken/teels">github.com/ddworken/teels</a></p>
+    </div>
+    
+    <div class="section">
+        <h2>Deployed Version</h2>
+        <p>v0.{{.Version}}</p>
+    </div>
+    
+    <div class="section">
+        <h2>Raw Attestation</h2>
+        <pre>{{.Attestation}}</pre>
+    </div>
+</body>
+</html>
+`))
+
+	// Execute template
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Printf("Error executing template: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
 func rootHandler(w http.ResponseWriter, req *http.Request) {
 	// Only serve index.html if the path is exactly "/"
 	if req.URL.Path == "/" {
@@ -155,6 +249,7 @@ func main() {
 	mux.HandleFunc("/formatter", formatterHandler)
 	mux.HandleFunc("/cyberchef", cyberchefHandler)
 	mux.HandleFunc("/diffchecker", diffCheckerHandler)
+	mux.HandleFunc("/attestation", attestationHandler)
 
 	// Serve static files with custom MIME type handling to fix a strict mime type checking error
 	fs := customFileServer(http.Dir(filepath.Join(baseDir, "static")))
