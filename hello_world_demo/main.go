@@ -184,18 +184,24 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
 		// Get validated attestation document
 		doc, err := lib.GetValidatedAttestationDoc(string(attestationReport.AwsNitroAttestation), osFS{})
 		if err == nil {
-			// Format PCRs into a table
-			pcrTable := "<table border='1'><tr><th>PCR Index</th><th>Value (hex)</th></tr>"
-			for i, pcr := range doc.PCRs {
-				pcrTable += fmt.Sprintf("<tr><td>%d</td><td>%x</td></tr>", i, pcr)
-			}
-			pcrTable += "</table>"
-
 			// Format timestamp
 			timestamp := time.UnixMilli(int64(doc.TimeStamp)).Format(time.RFC3339)
 
 			// Format user data
 			userData := fmt.Sprintf("%x", doc.User_Data)
+
+			// Define PCR data for templating
+			type PCRData struct {
+				Index int32
+				Value string
+			}
+			var pcrData []PCRData
+			for i, pcr := range doc.PCRs {
+				pcrData = append(pcrData, PCRData{
+					Index: int32(i),
+					Value: fmt.Sprintf("%x", pcr),
+				})
+			}
 
 			// Set content type to HTML
 			w.Header().Set("Content-Type", "text/html")
@@ -204,13 +210,13 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
 			data := struct {
 				Version     string
 				Attestation string
-				PCRs        string
+				PCRs        []PCRData
 				Timestamp   string
 				UserData    string
 			}{
 				Version:     version,
 				Attestation: attestation,
-				PCRs:        pcrTable,
+				PCRs:        pcrData,
 				Timestamp:   timestamp,
 				UserData:    userData,
 			}
@@ -268,12 +274,17 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
 
     <div class="section">
         <h2>Attestation Details</h2>
-        <h3>PCRs</h3>
-        {{.PCRs}}
         <h3>Timestamp</h3>
         <p>{{.Timestamp}}</p>
         <h3>User Data</h3>
         <p>{{.UserData}}</p>
+        <h3>PCRs</h3>
+        <table border='1'>
+            <tr><th>PCR Index</th><th>Value (hex)</th></tr>
+            {{range .PCRs}}
+            <tr><td>{{.Index}}</td><td>{{.Value}}</td></tr>
+            {{end}}
+        </table>
     </div>
     
     <div class="section">
