@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -190,7 +191,7 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
 			// Format user data
 			userData := fmt.Sprintf("%x", doc.User_Data)
 
-			// Define PCR data for templating
+			// Format PCR data for templating
 			type PCRData struct {
 				Index int32
 				Value string
@@ -202,6 +203,10 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
 					Value: fmt.Sprintf("%x", pcr),
 				})
 			}
+			// Sort pcrData by Index in ascending order
+			sort.Slice(pcrData, func(i, j int) bool {
+				return pcrData[i].Index < pcrData[j].Index
+			})
 
 			// Set content type to HTML
 			w.Header().Set("Content-Type", "text/html")
