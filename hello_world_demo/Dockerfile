@@ -66,6 +66,7 @@ COPY --from=go-builder /app/diffchecker.html /app/
 COPY --from=go-builder /app/index.html /app/
 COPY --from=go-builder /app/static/ /app/static/
 COPY VERSION /app/static/VERSION
+COPY aws_nitro_root.pem /app/
 COPY --from=cert-provisioner-builder /cert-provisioner /app/
 RUN chmod +x /app/cert-provisioner && chmod +x /app/enclave-server
 RUN uname -a
