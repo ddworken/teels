@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -20,8 +19,6 @@ import (
 	"time"
 
 	"github.com/ddworken/teels/lib"
-
-	nitro "github.com/veracruz-project/go-nitro-enclave-attestation-document"
 )
 
 // HTTPClient interface for mocking HTTP requests
@@ -300,37 +297,9 @@ func validateAttestationForPublicKeyHash(decodedSubdomainPart, pubKeyHash []byte
 }
 
 func validateAwsNitroAttestation(base64EncodedAttestation string, expectedAttestedData []byte, client HTTPClient, fs FileSystem) error {
-	if base64EncodedAttestation == "" {
-		return fmt.Errorf("no AWS Nitro attestation data found")
-	}
-
-	attestationBytes, err := base64.StdEncoding.DecodeString(base64EncodedAttestation)
+	doc, err := lib.GetValidatedAttestationDoc(base64EncodedAttestation, fs)
 	if err != nil {
-		return fmt.Errorf("failed to decode AWS Nitro attestation: %w", err)
-	}
-
-	rootCertPEM, err := fs.ReadFile("cert_verifier/aws_nitro_root.pem")
-	if err != nil {
-		return fmt.Errorf("failed to read AWS Nitro root certificate: %w", err)
-	}
-
-	block, _ := pem.Decode(rootCertPEM)
-	if block == nil || block.Type != "CERTIFICATE" {
-		return fmt.Errorf("failed to decode PEM block containing certificate")
-	}
-
-	rootCert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		return fmt.Errorf("failed to parse root certificate: %w", err)
-	}
-
-	if err := rootCert.CheckSignatureFrom(rootCert); err != nil {
-		return fmt.Errorf("failed to verify root certificate signature: %w", err)
-	}
-
-	doc, err := nitro.AuthenticateDocument(attestationBytes, *rootCert, true)
-	if err != nil {
-		return fmt.Errorf("failed to validate AWS Nitro attestation: %w", err)
+		return err
 	}
 
 	base32DecodedUserData, err := lib.Base32Encoder.DecodeString(string(doc.User_Data))
