@@ -30,6 +30,7 @@ COPY hello_world_demo/formatter.html ./
 COPY hello_world_demo/index.html ./
 COPY hello_world_demo/diffchecker.html ./
 COPY hello_world_demo/static/ ./static/
+COPY lib/ ./lib/
 
 # Build the Go application
 ENV GOCACHE=/app/.cache/go-build
