@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.66
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.79.1
 	github.com/go-acme/lego/v4 v4.22.2
+	github.com/mdlayher/vsock v1.2.1
 	github.com/veracruz-project/go-nitro-enclave-attestation-document v0.0.0-20230315135749-6fc97d770084
 )
 
@@ -38,7 +39,6 @@ require (
 	github.com/google/logger v1.1.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mdlayher/socket v0.4.1 // indirect
-	github.com/mdlayher/vsock v1.2.1 // indirect
 	github.com/miekg/dns v1.1.64 // indirect
 	github.com/veraison/go-cose v1.0.0-rc.1 // indirect
 	github.com/weppos/publicsuffix-go v0.40.3-0.20250311103038-7794c8c0723b // indirect
