@@ -277,12 +277,12 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
         <h3>Timestamp</h3>
         <p>{{.Timestamp}}</p>
         <h3>User Data</h3>
-        <p>{{.UserData}}</p>
+        <p><pre>{{.UserData}}</pre></p>
         <h3>PCRs</h3>
         <table border='1'>
             <tr><th>PCR Index</th><th>Value (hex)</th></tr>
             {{range .PCRs}}
-            <tr><td>{{.Index}}</td><td>{{.Value}}</td></tr>
+            <tr><td>{{.Index}}</td><td><pre>{{.Value}}</pre></td></tr>
             {{end}}
         </table>
     </div>
