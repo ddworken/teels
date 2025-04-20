@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -11,6 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/ddworken/teels/lib"
 
 	"github.com/mdlayher/vsock"
 )
@@ -131,6 +135,21 @@ func diffCheckerHandler(w http.ResponseWriter, req *http.Request) {
 	http.ServeFile(w, req, filepath.Join(baseDir, "diffchecker.html"))
 }
 
+// osFS implements the FileSystem interface for real file system operations
+type osFS struct{}
+
+func (osFS) ReadFile(name string) ([]byte, error) {
+	return os.ReadFile(name)
+}
+
+func (osFS) WriteFile(name string, data []byte, perm os.FileMode) error {
+	return os.WriteFile(name, data, perm)
+}
+
+func (osFS) MkdirAll(path string, perm os.FileMode) error {
+	return os.MkdirAll(path, perm)
+}
+
 func attestationHandler(w http.ResponseWriter, req *http.Request) {
 	fmt.Println("attestationHandler")
 
@@ -159,6 +178,122 @@ func attestationHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	// Parse attestation document
+	var attestationReport lib.AttestationReport
+	if err := json.Unmarshal([]byte(attestation), &attestationReport); err == nil {
+		// Get validated attestation document
+		doc, err := lib.GetValidatedAttestationDoc(string(attestationReport.AwsNitroAttestation), osFS{})
+		if err == nil {
+			// Format PCRs into a table
+			pcrTable := "<table border='1'><tr><th>PCR Index</th><th>Value (hex)</th></tr>"
+			for i, pcr := range doc.PCRs {
+				pcrTable += fmt.Sprintf("<tr><td>%d</td><td>%x</td></tr>", i, pcr)
+			}
+			pcrTable += "</table>"
+
+			// Format timestamp
+			timestamp := time.UnixMilli(int64(doc.TimeStamp)).Format(time.RFC3339)
+
+			// Format user data
+			userData := fmt.Sprintf("%x", doc.User_Data)
+
+			// Set content type to HTML
+			w.Header().Set("Content-Type", "text/html")
+
+			// Define template data
+			data := struct {
+				Version     string
+				Attestation string
+				PCRs        string
+				Timestamp   string
+				UserData    string
+			}{
+				Version:     version,
+				Attestation: attestation,
+				PCRs:        pcrTable,
+				Timestamp:   timestamp,
+				UserData:    userData,
+			}
+
+			// Create and parse template
+			tmpl := template.Must(template.New("attestation").Parse(`
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Teels Attestation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="section">
+        <h2>Github Link</h2>
+        <p><a href="https://github.com/ddworken/teels">github.com/ddworken/teels</a></p>
+    </div>
+    
+    <div class="section">
+        <h2>Deployed Version</h2>
+        <p>v0.{{.Version}}</p>
+    </div>
+
+    <div class="section">
+        <h2>Attestation Details</h2>
+        <h3>PCRs</h3>
+        {{.PCRs}}
+        <h3>Timestamp</h3>
+        <p>{{.Timestamp}}</p>
+        <h3>User Data</h3>
+        <p>{{.UserData}}</p>
+    </div>
+    
+    <div class="section">
+        <h2>Raw Attestation</h2>
+        <pre>{{.Attestation}}</pre>
+    </div>
+</body>
+</html>
+`))
+
+			// Execute template
+			if err := tmpl.Execute(w, data); err != nil {
+				log.Printf("Error executing template: %v", err)
+				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			}
+			return
+		}
+	}
+
+	// If we get here, either the attestation couldn't be parsed or validated
 	// Set content type to HTML
 	w.Header().Set("Content-Type", "text/html")
 

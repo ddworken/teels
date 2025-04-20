@@ -52,7 +52,11 @@ func GetValidatedAttestationDoc(base64EncodedAttestation string, fs FileSystem) 
 		return nil, fmt.Errorf("failed to decode AWS Nitro attestation: %w", err)
 	}
 
-	rootCertPEM, err := fs.ReadFile("cert_verifier/aws_nitro_root.pem")
+	path := "cert_verifier/aws_nitro_root.pem"
+	if os.Getenv("AWS_NITRO") == "true" {
+		path = "/app/aws_nitro_root.pem"
+	}
+	rootCertPEM, err := fs.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read AWS Nitro root certificate: %w", err)
 	}
