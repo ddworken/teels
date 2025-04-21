@@ -72,13 +72,23 @@ type GitHubRelease struct {
 	TagName string `json:"tag_name"`
 }
 
+var (
+	maxRetries = 5
+	maxDelay   = 20 * time.Second
+)
+
 const (
-	maxRetries    = 5
 	baseDelay     = time.Second
-	maxDelay      = 20 * time.Second
 	cacheDir      = "/tmp/http-get-cache"
 	githubBaseURL = "https://api.github.com/repos/ddworken/teels"
 )
+
+func init() {
+	if lib.IsGithubAction() {
+		maxRetries = 10
+		maxDelay = 60 * time.Second
+	}
+}
 
 // retrieveExpectedPcrs downloads and processes eif-info.txt files from all available releases
 // TODO: This currently just trusts the PCR values listed on GH releases. Ideally, we would actually
