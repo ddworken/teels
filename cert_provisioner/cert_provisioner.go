@@ -180,14 +180,18 @@ func saveAttestation(attestation lib.AttestationReport) ([]byte, error) {
 	}
 
 	log.Printf("Generated attestation report and saved to: %s", outputPath)
-	log.Printf("Saving attestation to s3...")
-	httpClient, err := gettHttpClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get HTTP client: %v", err)
+	if lib.IsGithubAction() {
+		log.Printf("Skipping attestation upload to s3 in Github Action")
 	} else {
-		err = lib.PublishToS3(context.TODO(), httpClient, string(jsonData), filename)
+		log.Printf("Saving attestation to s3...")
+		httpClient, err := gettHttpClient()
 		if err != nil {
-			return nil, fmt.Errorf("failed to publish attestation to s3: %v", err)
+			return nil, fmt.Errorf("failed to get HTTP client: %v", err)
+		} else {
+			err = lib.PublishToS3(context.TODO(), httpClient, string(jsonData), filename)
+			if err != nil {
+				return nil, fmt.Errorf("failed to publish attestation to s3: %v", err)
+			}
 		}
 	}
 	return jsonData, nil

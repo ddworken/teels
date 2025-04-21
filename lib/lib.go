@@ -151,3 +151,7 @@ func PublishToS3(ctx context.Context, httpClient *http.Client, content, filename
 	log.Printf("[DEBUG] Successfully uploaded to S3")
 	return nil
 }
+
+func IsGithubAction() bool {
+	return os.Getenv("GITHUB_ACTION") != ""
+}
