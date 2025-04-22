@@ -122,7 +122,7 @@ func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error)
 		}
 
 		url := fmt.Sprintf("https://github.com/ddworken/teels/releases/download/%s/eif-info.txt", release.TagName)
-		resp, err := httpGetWithRetryAndCaching(url, client, fs, 0)
+		resp, err := httpGetWithRetryAndCaching(url, client, fs, time.Minute)
 		if err != nil {
 			log.Printf("Warning: Failed to fetch %s: %v", release.TagName, err)
 			continue
@@ -275,7 +275,7 @@ func isNetworkError(err error) bool {
 
 func getAttestationBytes(encodedSubdomainPart string, client HTTPClient, fs FileSystem) ([]byte, error) {
 	url := fmt.Sprintf("http://teels-attestations.s3.ap-south-1.amazonaws.com/%s.bin", encodedSubdomainPart)
-	resp, err := httpGetWithRetryAndCaching(url, client, fs, 0)
+	resp, err := httpGetWithRetryAndCaching(url, client, fs, time.Hour)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch attestation: %w", err)
 	}
