@@ -230,7 +230,7 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 			}, nil
 		}
 
-		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusServiceUnavailable {
+		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusServiceUnavailable && resp.StatusCode != http.StatusForbidden {
 			resp.Body.Close()
 			return resp, nil
 		}
