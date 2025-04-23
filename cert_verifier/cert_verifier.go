@@ -96,12 +96,7 @@ func init() {
 func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error) {
 	var results []PcrValues
 
-	req, err := http.NewRequest("GET", githubBaseURL+"/releases", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := client.Do(req)
+ resp, err := httpGetWithRetryAndCaching(githubBaseURL+"/releases", client, fs, time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases: %w", err)
 	}
