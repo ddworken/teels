@@ -263,6 +263,8 @@ func isNetworkError(err error) bool {
 		return true
 	case strings.Contains(err.Error(), "network is unreachable"):
 		return true
+	case strings.Contains(err.Error(), "TLS handshake timeout"):
+		return true
 	default:
 		return false
 	}
