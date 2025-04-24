@@ -51,7 +51,7 @@ configure:
 	sudo systemctl enable --now nitro-enclaves-allocator.service
 
 	# Install socat-proxy service
-	sudo cp scripts/socat-proxy.service /etc/systemd/system/
+	sudo cp configs/socat-proxy.service /etc/systemd/system/
 	sudo systemctl daemon-reload
 	sudo systemctl enable socat-proxy
 	sudo systemctl start socat-proxy
