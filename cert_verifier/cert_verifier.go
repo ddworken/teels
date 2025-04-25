@@ -152,6 +152,23 @@ func retrieveExpectedPcrs(client HTTPClient, fs FileSystem) ([]PcrValues, error)
 	return results, nil
 }
 
+// isRetriableStatusCode checks if the given HTTP status code should trigger a retry
+func isRetriableStatusCode(host string, statusCode int) bool {
+	if host == "crt.sh" && statusCode == http.StatusNotFound {
+		return true
+	}
+
+	switch statusCode {
+	case http.StatusTooManyRequests,
+		http.StatusServiceUnavailable,
+		http.StatusForbidden,
+		http.StatusBadGateway:
+		return true
+	default:
+		return false
+	}
+}
+
 // httpGetWithRetryAndCaching performs an HTTP GET request with retry logic and caching
 func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSystem, ttl time.Duration) (*http.Response, error) {
 	if err := fs.MkdirAll(cacheDir, 0o755); err != nil {
@@ -225,7 +242,7 @@ func httpGetWithRetryAndCaching(requestUrl string, client HTTPClient, fs FileSys
 			}, nil
 		}
 
-		if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode != http.StatusServiceUnavailable && resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusBadGateway {
+		if !isRetriableStatusCode(domain, resp.StatusCode) {
 			resp.Body.Close()
 			return resp, nil
 		}
