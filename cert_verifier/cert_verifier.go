@@ -86,7 +86,7 @@ const (
 func init() {
 	if lib.IsGithubAction() {
 		maxRetries = 15
-		maxDelay = 90 * time.Second
+		maxDelay = 180 * time.Second
 	}
 }
 
