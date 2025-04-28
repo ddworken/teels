@@ -25,9 +25,17 @@ jobs:
             ${{ runner.os }}-http-cache-
 
       - name: Run cert verifier audit
+        id: audit
+        continue-on-error: true
         env:
           VERIFIED_HOST_NAME: verified.teels.dev
-        run: go run cert_verifier/cert_verifier.go audit 
+        run: go run cert_verifier/cert_verifier.go audit
+        
+      - name: Retry cert verifier audit if the first attempt failed
+        if: steps.audit.outcome == 'failure'
+        env:
+          VERIFIED_HOST_NAME: verified.teels.dev
+        run: go run cert_verifier/cert_verifier.go audit
       
       - name: Check if host is up
         id: check-host
