@@ -439,7 +439,7 @@ func queryCTLogs(domain string, client HTTPClient, fs FileSystem) ([]*x509.Certi
 	// Construct the crt.sh API URL for initial search
 	url := fmt.Sprintf("https://crt.sh/?q=%s&output=json", domain)
 
-	// Make the HTTP request with 5-minute TTL
+	// Make the HTTP request with a short TTL
 	resp, err := httpGetWithRetryAndCaching(url, client, fs, time.Minute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query crt.sh: %w", err)
